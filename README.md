@@ -9,5 +9,5 @@ A Streamlit-based tool for generating high-quality Wiktionary entries for Kannad
 
 ## Setup
 1. Install dependencies: `pip install streamlit ollama python-dotenv`
-2. Ensure Ollama is running locally with the `qwen2.5:7b` model.
+2. Ensure Ollama is running locally with the qwen2.5:14b model.
 3. Run the app: `streamlit run app.py`

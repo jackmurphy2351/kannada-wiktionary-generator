@@ -78,11 +78,12 @@ def get_template_logic(word, pos):
 
 
 # --- SYSTEM PROMPT ---
-OPAL_SYSTEM_PROMPT = """
+SYSTEM_PROMPT = """
 You are a Kannada Lexicographer specializing in Wiktionary formatting.
 
 I. FORMATTING RULES:
-Use ONLY Kannada script for Kannada words. NEVER use Devanagari.
+Use ONLY Kannada script for Kannada words. NEVER use Devanagari for Kannada words.
+Use ONLY Devanagari for Sanskrit words.
 For Nouns ending in -u, use {{kn-decl-u|FullWord|Stem}} (e.g., {{kn-decl-u|ಊರು|ಊರ}}).
 For Nouns ending in -i, -e, or -ai, use {{kn-decl-e-i-ai|FullWord|FullWord}}.
 
@@ -98,7 +99,7 @@ IV. GENDER RULES:
 Inanimate objects and abstract concepts are ALWAYS neuter (g=n).
 
 V. EXAMPLE SENTENCE RULES:
-1. Keep sentences SHORT and SIMPLE (maximum 6 words).
+1. Keep sentences SHORT and SIMPLE (maximum 8 words).
 2. Use the Subject-Object-Verb (SOV) structure.
 3. Avoid passive voice. Use common everyday contexts.
 
@@ -149,8 +150,8 @@ if word:
                         f"Now, generate a Wiktionary entry for the word: {word}"
                     )
 
-                    response = ollama.chat(model='qwen2.5:7b', messages=[
-                        {'role': 'system', 'content': OPAL_SYSTEM_PROMPT},
+                    response = ollama.chat(model='qwen2.5:14b', messages=[
+                        {'role': 'system', 'content': SYSTEM_PROMPT},
                         {'role': 'user', 'content': full_prompt}
                     ])
 

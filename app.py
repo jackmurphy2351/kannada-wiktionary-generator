@@ -24,12 +24,33 @@ def save_to_ground_truth(word, entry):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-def get_few_shot_examples(current_ground_truth, count=3):
-    """Formats a subset of verified entries as examples for the AI."""
+def get_few_shot_examples(current_ground_truth, pos_category, count=3):
+    """Formats a subset of verified entries that MATCH the requested Part of Speech."""
     examples = ""
-    # We take the first few entries to serve as structural examples
-    for i, (word, wikitext) in enumerate(list(current_ground_truth.items())[:count]):
+    matched_entries = []
+
+    # Create the Wikitext header we are looking for (e.g., "===Verb===")
+    search_string = f"==={pos_category}==="
+
+    # First, try to find entries that match the exact Part of Speech
+    for word, wikitext in current_ground_truth.items():
+        if search_string in wikitext:
+            matched_entries.append((word, wikitext))
+        if len(matched_entries) == count:
+            break
+
+    # Fallback: If we don't have enough matches, just fill the rest with whatever is available
+    if len(matched_entries) < count:
+        for word, wikitext in current_ground_truth.items():
+            if (word, wikitext) not in matched_entries:
+                matched_entries.append((word, wikitext))
+            if len(matched_entries) == count:
+                break
+
+    # Format the selected entries
+    for i, (word, wikitext) in enumerate(matched_entries):
         examples += f"\nExample {i + 1}:\nWord: {word}\nOutput:\n{wikitext}\n---\n"
+
     return examples
 
 
@@ -117,7 +138,7 @@ if word:
                     if template_instruction == "IRREGULAR_CHECK":
                         template_instruction = "If the past participle has a double consonant (geminate), use {{kn-conj-u-irreg|Stem|Participle|PastStem}}. Otherwise use {{kn-conj-u}}."
 
-                    examples_block = get_few_shot_examples(ground_truth)
+                    examples_block = get_few_shot_examples(ground_truth, pos_category)
 
                     full_prompt = (
                         f"Use these examples as a formatting guide:\n{examples_block}\n\n"

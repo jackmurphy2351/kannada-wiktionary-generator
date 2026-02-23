@@ -24,22 +24,49 @@ def save_to_ground_truth(word, entry):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-def get_few_shot_examples(current_ground_truth, pos_category, count=3):
-    """Formats a subset of verified entries that MATCH the requested Part of Speech."""
+def get_few_shot_examples(current_ground_truth, pos_category, target_word, count=4):
+    """Formats a subset of verified entries structurally matched to the target word."""
     examples = ""
     matched_entries = []
 
-    # Create the Wikitext header we are looking for (e.g., "===Verb===")
-    search_string = f"==={pos_category}==="
+    # 1. Determine the structural template to hunt for based on the word's ending
+    structural_target = ""
+    if pos_category == "Verb":
+        if target_word.endswith("ಿಸು"):
+            structural_target = "kn-conj-isu"
+        elif target_word.endswith("ಕೊಳ್ಳು"):
+            structural_target = "kn-conj-koḷḷu"
+        elif target_word[-1] in ["ಿ", "ೆ", "ೈ"]:
+            # Target for verbs like ಕುಡಿ (kuḍi) or ಬರೆ (bare)
+            structural_target = "kn-conj-e-i-other"
+        else:
+            structural_target = "kn-conj-u"  # General catch for native -u verbs
 
-    # First, try to find entries that match the exact Part of Speech
+    elif pos_category == "Noun":
+        last_char = target_word[-1]
+        if last_char == "ು":
+            structural_target = "kn-decl-u"
+        elif last_char in ["ಿ", "ೆ", "ೈ"]:
+            structural_target = "kn-decl-e-i-ai"
+        else:
+            structural_target = "kn-decl-a"
+
+    # 2. PRIORITY PASS: Match POS *and* Structural Template
     for word, wikitext in current_ground_truth.items():
-        if search_string in wikitext:
+        if f"==={pos_category}===" in wikitext and structural_target in wikitext:
             matched_entries.append((word, wikitext))
         if len(matched_entries) == count:
             break
 
-    # Fallback: If we don't have enough matches, just fill the rest with whatever is available
+    # 3. SECONDARY PASS: Fallback to just matching POS (if we don't have enough perfect matches)
+    if len(matched_entries) < count:
+        for word, wikitext in current_ground_truth.items():
+            if f"==={pos_category}===" in wikitext and (word, wikitext) not in matched_entries:
+                matched_entries.append((word, wikitext))
+            if len(matched_entries) == count:
+                break
+
+    # 4. FINAL FALLBACK: Fill with anything available to prevent prompt crashes
     if len(matched_entries) < count:
         for word, wikitext in current_ground_truth.items():
             if (word, wikitext) not in matched_entries:
@@ -47,7 +74,7 @@ def get_few_shot_examples(current_ground_truth, pos_category, count=3):
             if len(matched_entries) == count:
                 break
 
-    # Format the selected entries
+    # 5. Format the selected entries
     for i, (word, wikitext) in enumerate(matched_entries):
         examples += f"\nExample {i + 1}:\nWord: {word}\nOutput:\n{wikitext}\n---\n"
 
@@ -59,7 +86,6 @@ def get_template_logic(word, pos):
 
     if pos == "Noun":
         if last_char == "ು":  # Ends in -u
-            # Corrected: Just drop the 'u'.
             # 'manju' -> 'manja' happens automatically in the template
             stem = word[:-1]
             return f"{{{{kn-decl-u|{word}|{stem}}}}}"
@@ -70,8 +96,23 @@ def get_template_logic(word, pos):
             return f"{{{{kn-decl-a|{word}}}}}"
 
     elif pos == "Verb":
-        # Heuristic: If the verb is a common short native word like ನಗು, ಕೊಡು, ಬಿಡು
-        # we tell the AI to look for the double consonant in the past stem.
+        # 1. Reflexive compound verbs (e.g., ನೋಡಿಕೊಳ್ಳು)
+        if word.endswith("ಕೊಳ್ಳು"):
+            prefix = word[:-5]  # Drops the 5 characters of 'ಕೊಳ್ಳು'
+            return f"{{{{kn-conj-koḷḷu|{prefix}}}}}"
+
+        # 2. Causative or loanword verbs ending in -isu (e.g., ಕಳುಹಿಸು, ಅನಿಸು)
+        if word.endswith("ಿಸು"):
+            stem = word[:-1]
+            return f"{{{{kn-conj-isu|{word}|{stem}}}}}"
+
+        # 3. Verbs ending in -i, -e, or -ai (e.g., ಕುಡಿ, ಬರೆ)
+        if last_char in ["ಿ", "ೆ", "ೈ"]:
+            # Pattern: word | present_stem (+ya) | past_stem (+da) | imperative
+            return f"{{{{kn-conj-e-i-other|{word}|{word}ಯ|{word}ದ|{word}}}}}"
+
+        # 4. Standard native -u verbs (e.g., ಮಾಡು, ನಗು, ಕೊಡು)
+        # We tell the AI to look for the double consonant in the past stem.
         return "IRREGULAR_CHECK"
 
     return "Template not found"
@@ -89,6 +130,7 @@ For Nouns ending in -i, -e, or -ai, use {{kn-decl-e-i-ai|FullWord|FullWord}}.
 
 II. VERB TEMPLATE LOGIC:
 If a native verb is IRREGULAR (past participle ends in a double consonant like ನಕ್ಕು, ಕೊಟ್ಟು, ಬಿಟ್ಟು), use {{kn-conj-u-irreg|PresentStem|PastParticiple|PastStem}}.
+If a verb ends in -ಿಸು, use {{kn-conj-isu|FullWord|Stem}} (e.g., {{kn-conj-isu|ಓಡಿಸು|ಓಡಿಸ}}).
 For all other regular verbs ending in -u, use {{kn-conj-u|PresentStem|PastParticiple|PastStem}}.
 
 III. ETYMOLOGY RULES:
@@ -139,7 +181,7 @@ if word:
                     if template_instruction == "IRREGULAR_CHECK":
                         template_instruction = "If the past participle has a double consonant (geminate), use {{kn-conj-u-irreg|Stem|Participle|PastStem}}. Otherwise use {{kn-conj-u}}."
 
-                    examples_block = get_few_shot_examples(ground_truth, pos_category)
+                    examples_block = get_few_shot_examples(ground_truth, pos_category, word)
 
                     full_prompt = (
                         f"Use these examples as a formatting guide:\n{examples_block}\n\n"
@@ -168,16 +210,13 @@ if word:
         edited_entry = st.text_area("Final Wikitext:", st.session_state['current_result'], height=400)
 
         # --- SENTENCE SANDBOX ---
-        st.markdown("---")
-        st.subheader("Sentence Sandbox 🛠️")
-        st.write("Generate a few simple sentence options to copy and paste into your entry above.")
-
         if st.button("Generate 3 Example Sentences"):
             with st.spinner("Brainstorming simple sentences..."):
                 sandbox_prompt = (
                     f"Word: {word}\n"
                     f"Meaning: {translation}\n\n"
                     "Task: Write 3 short, simple, everyday Kannada sentences using the word accurately.\n"
+                    f"CRITICAL RULE: The exact Kannada word '{word}' or its conjugated/declined forms MUST be used in every single sentence.\n"
                     "Formatting: Use {{ux|kn|Kannada|t=English}}\n\n"
                     "Examples:\n"
                     "1. {{ux|kn|ರೈಲು ನಿಲ್ದಾಣ ಎಲ್ಲಿದೆ?|t=Where is the train station?}}\n"
@@ -185,11 +224,15 @@ if word:
                     "Rules:\n"
                     "- Maximum 8 words per sentence.\n"
                     "- Strictly use Subject-Object-Verb order.\n"
-                    "- No mixed scripts or archaic language."
+                    "- OUTPUT ONLY THE 3 FORMATTED WIKITEXT LINES.\n"
+                    "- EACH sentence MUST be on a SEPARATE LINE.\n"  # <--- NEW RULE
+                    "- NO introductory text, NO explanations, NO conversational filler.\n"
+                    "- STRICTLY restrict output to Kannada and English."
                 )
                 try:
-                    resp = ollama.chat(model='qwen2.5:7b', messages=[
-                        {'role': 'system', 'content': 'You are a helpful Kannada linguistic assistant.'},
+                    resp = ollama.chat(model='qwen2.5:14b', messages=[
+                        {'role': 'system',
+                         'content': 'You are a strict Kannada linguistic assistant. Output raw Wikitext ONLY. Ensure sentences are natural, grammatically correct, and used in everyday speech. Never invent words.'},
                         {'role': 'user', 'content': sandbox_prompt}
                     ])
                     st.session_state['sandbox_results'] = resp['message']['content']
@@ -197,7 +240,8 @@ if word:
                     st.error(f"Error generating sentences: {e}")
 
         if 'sandbox_results' in st.session_state:
-            st.info(st.session_state['sandbox_results'])
+            # This renders the output exactly as received, preserving newlines
+            st.code(st.session_state['sandbox_results'], language='text')
 
         # --- SAVE BUTTON ---
         st.markdown("---")

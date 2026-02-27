@@ -10,6 +10,7 @@ load_dotenv()
 # --- DATA MANAGEMENT ---
 JSON_FILE = 'verified_kannada_entries.json'
 
+
 def load_ground_truth():
     """Loads the knowledge base from JSON."""
     if os.path.exists(JSON_FILE) and os.path.getsize(JSON_FILE) > 0:
@@ -17,12 +18,14 @@ def load_ground_truth():
             return json.load(f)
     return {}
 
+
 def save_to_ground_truth(word, entry):
     """Saves a verified wikitext entry to the JSON file."""
     data = load_ground_truth()
     data[word] = entry
     with open(JSON_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 def format_time(seconds):
     """Formats seconds into H:M:S or M:S or S based on duration."""
@@ -34,6 +37,7 @@ def format_time(seconds):
     if minutes < 60:
         return f"{minutes}m {remaining_seconds}s"
     return f"{minutes // 60}h {minutes % 60}m {remaining_seconds}s"
+
 
 def get_template_logic(word, pos_categories):
     """
@@ -65,6 +69,7 @@ def get_template_logic(word, pos_categories):
                 instructions.append("Verb: IRREGULAR_CHECK")
 
     return " AND ".join(instructions) if instructions else "No specific morphology templates required."
+
 
 def get_few_shot_examples(current_ground_truth, pos_categories, target_word, count=2):
     """
@@ -112,52 +117,47 @@ def get_few_shot_examples(current_ground_truth, pos_categories, target_word, cou
 
     return "\n".join([f"\nExample {i + 1}:\n{ex}" for i, ex in enumerate(examples)])
 
+
 # --- SYSTEM PROMPTS ---
 
 KANNADA_LEXICOGRAPHER_PROMPT = """
 You are an expert Kannada Lexicographer and Dravidian Linguist. 
 TASK: Output raw Wikitext ONLY. 
 
-I. LINGUISTIC PRECISION & EXAMPLES:
-- Use <examples> as the "Golden Standard". Pay exact attention to how they format example sentences.
-- EXAMPLES REQUIRED: You MUST generate at least one natural, high-quality SOV Kannada example sentence for EACH meaning.
-- STRICT UX TEMPLATE: Use {{ux|kn|KANNADA_SCRIPT|tr=TRANSLITERATION|t=ENGLISH_TRANSLATION}}.
-- SCRIPT ENFORCEMENT: Example sentences MUST be 100% Kannada script. NEVER use Telugu, Tamil, or Devanagari characters.
-- KANNADA-ONLY TEMPLATES: The templates {{kn-IPA|...}} and {{kn-decl-...|...}} MUST use the word in Kannada script, NEVER Latin/Roman script.
+I. SANSKRIT LOAN RULE (CRITICAL):
+- If the word contains ANY aspirated consonants (ಖ, ಘ, ಛ, ಝ, ಠ, ಢ, ಥ, ಧ, ಫ, ಭ), it is a Sanskrit borrowing.
+- You MUST use: {{bor|kn|sa|KANNADA_SCRIPT_HERE}}.
+- Example: 'ಭೂಮಿ' contains 'ಭ', so it is borrowed from Sanskrit. Use {{bor|kn|sa|ಭೂಮಿ}}.
 
-II. ETYMOLOGY & HALLUCINATION:
-- NEVER guess etymologies. If uncertain, use {{rfe|kn}}.
-- SANSKRIT LOAN INDICATORS: If a word contains aspirated consonants (ಖ, ಘ, ಛ, ಝ, ಠ, ಢ, ಥ, ಧ, ಫ, ಭ), it is a Sanskrit borrowing ({{bor|kn|sa|...}}). DO NOT claim it is native Dravidian.
-- Example: 'ಭೂಮಿ' contains 'ಭ', so it is borrowed from Sanskrit.
+II. FORMAL LINGUISTIC PRECISION:
+- EXAMPLES REQUIRED: Generate at least one sophisticated, formal SOV Kannada example sentence for EACH meaning.
+- NO CLICHÉS: Avoid "The earth revolves around the sun" or "The earth is big." Generate unique, context-rich sentences.
+- STRICT FORMAL SCRIPT: Use formal, written Kannada (e.g., use 'ವಾಸಿಸುತ್ತೇವೆ' not 'ವಾಸಿಸ್ತೇವೆ').
 
-III. ISO 15919 TRANSLITERATION TABLE:
-Strictly follow this mapping for the `tr=` parameter:
-- Vowels: ಆ=ā, ಈ=ī, ಊ=ū, ಏ=ē, ಓ=ō, ಐ=ai, ಔ=au
-- Retroflex (Underdot): ಟ=ṭ, ಠ=ṭh, ಡ=ḍ, ಢ=ḍh, ಣ=ṇ, ಳ=ḷ, ಷ=ṣ
-- Dental (NO Underdot): ತ=t, ಥ=th, ದ=d, ಧ=dh, ನ=n
-- CRITICAL: Never use 'ṭ' for 'ತ'. Use 't'.
+III. CHARACTER-LITERAL TRANSLITERATION:
+- Transliteration (tr=) MUST be a character-by-character mapping of the formal script.
+- NEVER use spoken contractions (e.g., do NOT write 'vāsistīve' if the script is 'ವಾಸಿಸುತ್ತೇವೆ'; write 'vāsisuttēve').
+- NO underdot for dental 'ತ' (t). ALWAYS use underdot for retroflex 'ಟ' (ṭ).
 """
 
 VALIDATOR_PROMPT = """
 You are a ruthless QA Editor for Kannada Wiktionary. 
-Review the draft and perform these EXACT fixes:
+Perform these EXACT fixes:
 
-1. TRANSLITERATION AUDIT (CRITICAL): 
-   - Check every 'tr=' parameter.
-   - If the Kannada letter is 'ತ' (dental), the transliteration MUST be 't'.
-   - If the Kannada letter is 'ಟ' (retroflex), the transliteration MUST be 'ṭ'.
-   - Fix missing macrons (ā, ī, ū, ē, ō) and underdots (ṭ, ḍ, ṇ, ḷ, ṣ).
+1. FORMAL TRANSLITERATION AUDIT (NO CONTRACTIONS): 
+   - Ensure the 'tr=' value matches every single letter of the Kannada script.
+   - FIX SPOKEN ELISIONS: If the script has '-suttēve' (ಸುತ್ತಿವೆ), the transliteration MUST NOT be '-stīve'. 
+   - EXAMPLE: Change 'vāsistīve' to 'vāsisuttēve'. Change 'sutt' to 'sutta'.
+   - Fix dental confusion: 'ತ' is 't', NOT 'ṭ'.  
 
-2. TEMPLATE SCRIPT CHECK:
-   - Ensure {{kn-IPA|...}} and {{kn-decl-...|...}} contain ONLY Kannada script. If you see Latin characters like 'bhūmi', replace them with the Kannada script 'ಭೂಮಿ'.
-
-3. SCRIPT CLEANING:
-   - Replace any accidentally used Telugu or Devanagari characters with Kannada equivalents.
-
-4. ETYMOLOGY CHECK:
-   - If a word with aspirated letters (like ಭ) is labeled as 'inh' from 'dra-pro', change it to 'bor' from 'sa'.
-
-CRITICAL RULE: Return ONLY the corrected raw Wikitext. DO NOT output explanations, conversational filler, or markdown blocks. Your output MUST start exactly with ==Kannada==.
+2. ETYMOLOGY AUDIT:
+   - If the word has an aspirated consonant like 'ಭ' (e.g., "ಭೂಮಿ", "ಅಥವಾ") and the draft has {{rfe|kn}}, you MUST change it to {{bor|kn|sa|ಭೂಮಿ}}.
+    
+3. TEMPLATE SANITIZATION:
+   - Ensure every {{ux}} template has `tr=` and `t=`.
+   - Ensure {{kn-IPA|...}} contains the word in Kannada script.
+   
+CRITICAL RULE: Return ONLY the corrected raw Wikitext. Start exactly with ==Kannada==.
 """
 
 # --- APP UI ---
@@ -179,7 +179,8 @@ if "last_word" not in st.session_state or st.session_state["last_word"] != word:
     st.session_state["last_word"] = word
     st.session_state.pop('current_result', None)
 
-pos_categories = st.multiselect("Select Parts of Speech:", ["Noun", "Verb", "Adjective", "Adverb", "Postposition"], default=["Noun"])
+pos_categories = st.multiselect("Select Parts of Speech:", ["Noun", "Verb", "Adjective", "Adverb", "Postposition"],
+                                default=["Noun"])
 
 if word:
     ground_truth = load_ground_truth()
@@ -239,9 +240,11 @@ if word:
                 progress_bar.progress(100)
                 status_text.text("Done!")
 
-                # Remove any remaining reasoning or conversational text
+                # Final clean: Remove reasoning/conversational text and lingering separators
                 if "==Kannada==" in final_content:
                     final_content = "==Kannada==" + final_content.split("==Kannada==")[-1]
+
+                final_content = final_content.strip().removesuffix("---").strip()
 
                 st.session_state['current_result'] = final_content
 

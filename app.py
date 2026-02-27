@@ -36,15 +36,12 @@ def format_time(seconds):
     remaining_seconds = seconds % 60
     if minutes < 60:
         return f"{minutes}m {remaining_seconds}s"
-    hours = minutes // 60
-    remaining_minutes = minutes % 60
-    return f"{hours}h {remaining_minutes}m {remaining_seconds}s"
+    return f"{minutes // 60}h {minutes % 60}m {remaining_seconds}s"
 
 
 def get_template_logic(word, pos_categories):
     """
     Returns the correct Wiktionary template strings based on word endings.
-    Now accepts a LIST of parts of speech (pos_categories).
     """
     instructions = []
     last_char = word[-1] if word else ""
@@ -54,7 +51,7 @@ def get_template_logic(word, pos_categories):
             if last_char == "ು":
                 stem = word.removesuffix("ು")
                 instructions.append(f"Noun: {{{{kn-decl-u|{word}|{stem}}}}}")
-            elif last_char in ["ಿ", "ೆ", "ೈ"]:
+            elif last_char in {"ಿ", "ೆ", "ೈ"}:
                 instructions.append(f"Noun: {{{{kn-decl-e-i-ai|{word}|{word}}}}}")
             else:
                 instructions.append(f"Noun: {{{{kn-decl-a|{word}}}}}")
@@ -64,26 +61,23 @@ def get_template_logic(word, pos_categories):
                 prefix = word.removesuffix("ಕೊಳ್ಳು")
                 instructions.append(f"Verb: {{{{kn-conj-koḷḷu|{prefix}}}}}")
             elif word.endswith("ಿಸು"):
-                stem = word.removesuffix("ು")  # removes the final 'u' to get the stem
+                stem = word.removesuffix("ು")
                 instructions.append(f"Verb: {{{{kn-conj-isu|{word}|{stem}}}}}")
-            elif last_char in ["ಿ", "ೆ", "ೈ"]:
+            elif last_char in {"ಿ", "ೆ", "ೈ"}:
                 instructions.append(f"Verb: {{{{kn-conj-e-i-other|{word}|{word}ಯ|{word}ದ|{word}}}}}")
             else:
                 instructions.append("Verb: IRREGULAR_CHECK")
 
-    # Join the instructions so the LLM knows what to do for each section
     return " AND ".join(instructions) if instructions else "No specific morphology templates required."
 
 
-def get_few_shot_examples(current_ground_truth, pos_categories, target_word, count=4):
+def get_few_shot_examples(current_ground_truth, pos_categories, target_word, count=3):
     """
-    Formats a subset of verified entries. Prioritizes entries that match
-    AT LEAST ONE of the target's parts of speech.
+    Formats a subset of verified entries with a single-pass search optimization.
     """
-    examples = ""
-    matched_entries = []
+    if not current_ground_truth:
+        return ""
 
-    # Let's try to match the structural template of the FIRST selected POS
     primary_pos = pos_categories[0] if pos_categories else None
     structural_target = ""
 
@@ -92,7 +86,7 @@ def get_few_shot_examples(current_ground_truth, pos_categories, target_word, cou
             structural_target = "kn-conj-isu"
         elif target_word.endswith("ಕೊಳ್ಳು"):
             structural_target = "kn-conj-koḷḷu"
-        elif target_word[-1] in ["ಿ", "ೆ", "ೈ"]:
+        elif target_word[-1] in {"ಿ", "ೆ", "ೈ"}:
             structural_target = "kn-conj-e-i-other"
         else:
             structural_target = "kn-conj-u"
@@ -100,36 +94,34 @@ def get_few_shot_examples(current_ground_truth, pos_categories, target_word, cou
         last_char = target_word[-1] if target_word else ""
         if last_char == "ು":
             structural_target = "kn-decl-u"
-        elif last_char in ["ಿ", "ೆ", "ೈ"]:
+        elif last_char in {"ಿ", "ೆ", "ೈ"}:
             structural_target = "kn-decl-e-i-ai"
         else:
             structural_target = "kn-decl-a"
 
-    # Pass 1: Match POS AND Structural Template
-    if primary_pos:
-        for word, wikitext in current_ground_truth.items():
-            if f"==={primary_pos}===" in wikitext and structural_target in wikitext:
-                matched_entries.append((word, wikitext))
-            if len(matched_entries) == count: break
+    examples = []
+    fallback_entries = []
 
-    # Pass 2: Fill with ANY matches to the requested POS categories
-    if len(matched_entries) < count:
-        for word, wikitext in current_ground_truth.items():
-            # Check if any of the requested POS headers are in this wikitext
-            if any(f"==={pos}===" in wikitext for pos in pos_categories) and (word, wikitext) not in matched_entries:
-                matched_entries.append((word, wikitext))
-            if len(matched_entries) == count: break
+    # Single pass matching to improve speed
+    for word, wikitext in current_ground_truth.items():
+        if len(examples) >= count:
+            break
 
-    # Formatting the output for the prompt
-    for i, (word, wikitext) in enumerate(matched_entries):
-        examples += f"\nExample {i + 1}:\nWord: {word}\nOutput:\n{wikitext}\n---\n"
+        if any(f"==={pos}===" in wikitext for pos in pos_categories):
+            if primary_pos and f"==={primary_pos}===" in wikitext and structural_target in wikitext:
+                examples.append(f"Word: {word}\nOutput:\n{wikitext}\n---")
+            elif len(fallback_entries) < count:
+                fallback_entries.append(f"Word: {word}\nOutput:\n{wikitext}\n---")
 
-    return examples
+    # Backfill if we didn't get enough strong matches
+    while len(examples) < count and fallback_entries:
+        examples.append(fallback_entries.pop(0))
+
+    return "\n".join([f"\nExample {i + 1}:\n{ex}" for i, ex in enumerate(examples)])
 
 
 # --- SYSTEM PROMPTS ---
 
-# Unified primary prompt for TranslateGemma (12B)
 KANNADA_LEXICOGRAPHER_PROMPT = """
 You are an expert Kannada Lexicographer and Dravidian Linguist. 
 TASK: Output raw Wikitext ONLY. 
@@ -137,7 +129,7 @@ TASK: Output raw Wikitext ONLY.
 I. LINGUISTIC PRECISION:
 - Use <examples> as the "Golden Standard" for structure.
 - GLIDE RULE: For verbs ending in -ೆ (like ನಡೆ), you MUST use the 'ಯ' (ya) glide before vowel-starting suffixes (e.g., ನಡೆಯಬೇಕು, ನಡೆಯುತ್ತಿದೆ).
-- CAUSATIVE WARNING: Do not confuse base verbs with causatives (e.g., use 'ನಡೆ' for walking, NOT 'ನಡೆಸು' which means to conduct).
+- CAUSATIVE WARNING: Do not confuse base verbs with causatives (e.g., use 'ನಡೆ' for 'to walk', NOT 'ನಡೆಸು' which means 'to conduct').
 - VERB SUBJECTS: Ensure verbs match subjects (e.g., -ಳು for 'ಅವಳು', -ನು for 'ಅವನು').
 
 II. ANTI-HALLUCINATION & ETYMOLOGY:
@@ -154,7 +146,6 @@ Strictly follow this mapping for the `tr=` parameter:
 - Aspirated: ಖ=kh, ಘ=gh, ಛ=ch, ಝ=jh, ಥ=th, ಧ=dh, ಫ=ph, ಭ=bh
 """
 
-# Hardened Validator for secondary pass
 VALIDATOR_PROMPT = """
 You are a ruthless QA Editor for Kannada Wiktionary. 
 Review the draft and perform these EXACT fixes:
@@ -178,31 +169,24 @@ Return ONLY the corrected raw Wikitext. NEVER wrap the wikitext in markdown code
 # --- APP UI ---
 st.set_page_config(page_title="Kannada Wiktionary Gen", page_icon="🌿")
 
-st.sidebar.title("Model Settings")
-model_choice = st.sidebar.radio(
-    "Choose Brain Size:",
-    options=["TranslateGemma (Fast - 12B)", "Sarvam-M (Deep - 24B)"],
-    index=0
-)
+SELECTED_MODEL = 'translategemma:12b'
 
-SELECTED_MODEL = 'translategemma:12b' if "Fast" in model_choice else 'mashriram/sarvam-m:latest'
-CURRENT_SYSTEM_PROMPT = KANNADA_LEXICOGRAPHER_PROMPT if "Fast" in model_choice else DEEP_PROMPT
+st.sidebar.title("Model Settings")
 st.sidebar.info(f"Using: `{SELECTED_MODEL}`")
 
 st.title("Kannada Wiktionary Generator")
 
 word = st.text_input("Enter a Kannada word:")
 
-# UI Upgrade: Added formatting instructions for the translation field
 translation = st.text_input("Enter the English translation:")
 st.caption(
     "💡 **Tip for better results:** Separate multiple meanings with commas (e.g., *beginning, start*). For verbs, always use the infinitive form (e.g., *to use, to employ*).")
 
+# Efficient session state cleanup
 if "last_word" not in st.session_state or st.session_state["last_word"] != word:
     st.session_state["last_word"] = word
-    for key in ['current_result', 'sandbox_results']:
-        if key in st.session_state:
-            del st.session_state[key]
+    st.session_state.pop('current_result', None)
+    st.session_state.pop('sandbox_results', None)
 
 pos_categories = st.multiselect("Select Parts of Speech:", ["Noun", "Verb", "Adjective", "Adverb", "Postposition"],
                                 default=["Noun"])
@@ -222,18 +206,14 @@ if word:
             try:
                 start_time = time.time()
 
-                # --- SETUP PROMPT ---
                 template_instruction = get_template_logic(word, pos_categories)
 
+                # Hardcoded irregular check logic since "Fast" logic is universal now
                 if template_instruction == "IRREGULAR_CHECK":
-                    if "Fast" in model_choice:
-                        stem = word[:-1]
-                        template_instruction = f"{{{{kn-conj-u|{stem}|{stem}ಿ|{stem}ಿದ}}}}"
-                    else:
-                        template_instruction = "Use {{kn-conj-u-irreg}} for geminates or {{kn-conj-u}} for regular forms."
+                    stem = word.removesuffix("ು")
+                    template_instruction = f"{{{{kn-conj-u|{stem}|{stem}ಿ|{stem}ಿದ}}}}"
 
-                example_count = 3 if "Fast" in model_choice else 4
-                examples_block = get_few_shot_examples(ground_truth, pos_categories, word, count=example_count)
+                examples_block = get_few_shot_examples(ground_truth, pos_categories, word, count=3)
 
                 full_prompt = (
                     f"### Context Examples:\n{examples_block}\n"
@@ -245,23 +225,20 @@ if word:
                     f"Ensure etymology is linguistically plausible for a Dravidian language."
                 )
 
-                # --- STEP 1: GENERATE DRAFT ---
-                status_text.text(f"Step 1/2: Drafting entry with {model_choice}...")
+                status_text.text(f"Step 1/2: Drafting entry with TranslateGemma...")
                 progress_bar.progress(25)
 
                 draft_content = ""
                 for chunk in ollama.chat(model=SELECTED_MODEL, messages=[
-                    {'role': 'system', 'content': CURRENT_SYSTEM_PROMPT},
+                    {'role': 'system', 'content': KANNADA_LEXICOGRAPHER_PROMPT},
                     {'role': 'user', 'content': full_prompt}
                 ], stream=True):
                     draft_content += chunk['message']['content']
-                    elapsed = time.time() - start_time
-                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(elapsed)}`")
+                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(time.time() - start_time)}`")
 
                 if "</think>" in draft_content:
                     draft_content = draft_content.split("</think>")[-1].strip()
 
-                # --- STEP 2: VALIDATE AND CORRECT ---
                 status_text.text("Step 2/2: Validating transliteration & etymology...")
                 progress_bar.progress(60)
 
@@ -273,8 +250,7 @@ if word:
                     {'role': 'user', 'content': validation_prompt}
                 ], stream=True):
                     final_content += chunk['message']['content']
-                    elapsed = time.time() - start_time
-                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(elapsed)}`")
+                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(time.time() - start_time)}`")
 
                 progress_bar.progress(100)
                 status_text.text("Done!")
@@ -315,8 +291,7 @@ if word:
                     {'role': 'user', 'content': sandbox_prompt}
                 ], stream=True):
                     full_content += chunk['message']['content']
-                    elapsed = time.time() - start_time
-                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(elapsed)}`")
+                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(time.time() - start_time)}`")
 
                 progress_bar.progress(100)
                 status_text.text("Complete!")

@@ -129,43 +129,50 @@ def get_few_shot_examples(current_ground_truth, pos_categories, target_word, cou
 
 # --- SYSTEM PROMPTS ---
 
-# Optimized for TranslateGemma (12B): Focuses on cross-lingual accuracy and template adherence
-FAST_PROMPT = """
-You are a Kannada Lexicographer specializing in Wiktionary formatting. 
+# Unified primary prompt for TranslateGemma (12B)
+KANNADA_LEXICOGRAPHER_PROMPT = """
+You are an expert Kannada Lexicographer and Dravidian Linguist. 
 TASK: Output raw Wikitext ONLY. 
 
-I. FEW-SHOT UTILIZATION:
-- Analyze the provided <examples> for formatting patterns.
-- Use the examples to determine how to structure the 'Etymology', 'Pronunciation', and 'Usage' sections for the target word.
+I. LINGUISTIC PRECISION:
+- Use <examples> as the "Golden Standard" for structure.
+- GLIDE RULE: For verbs ending in -ೆ (like ನಡೆ), you MUST use the 'ಯ' (ya) glide before vowel-starting suffixes (e.g., ನಡೆಯಬೇಕು, ನಡೆಯುತ್ತಿದೆ).
+- CAUSATIVE WARNING: Do not confuse base verbs with causatives (e.g., use 'ನಡೆ' for walking, NOT 'ನಡೆಸು' which means to conduct).
+- VERB SUBJECTS: Ensure verbs match subjects (e.g., -ಳು for 'ಅವಳು', -ನು for 'ಅವನು').
 
-II. ETYMOLOGY & SCRIPT:
-- NEVER assume an English origin for native words.
-- Use native scripts for cognates: Tamil (ta), Telugu (te), Malayalam (ml).
-- If a word starts with ಪ್ರ-, ವಿ-, or ಸಂ-, it is likely a Sanskrit loan ({{bor|kn|sa|...}}).
+II. ANTI-HALLUCINATION & ETYMOLOGY:
+- NEVER guess etymologies. If uncertain, use exactly: {{rfe|kn}}.
+- Distinguish between 'tatsama' (Sanskrit loans: {{bor|kn|sa|...}}) and native words ({{inh|kn|dra-pro|*...}}).
+- Words starting with ಪ್ರ-, ವಿ-, or ಸಂ- are typically Sanskrit.
 
-III. TEMPLATE RULES:
-- ALWAYS use {{ux|kn|Kannada|t=English}} for examples. 
-- Ensure Roman transliteration (tr=) in {{ux}} is phonetically accurate (e.g., use 'd' for ದ, not 'ḍ').
+III. ISO 15919 TRANSLITERATION TABLE:
+Strictly follow this mapping for the `tr=` parameter:
+- Vowels: ಆ=ā, ಈ=ī, ಊ=ū, ಏ=ē, ಓ=ō, ಐ=ai, ಔ=au
+- Retroflex: ಟ=ṭ, ಠ=ṭh, ಡ=ḍ, ಢ=ḍh, ಣ=ṇ, ಳ=ḷ
+- Dental: ತ=t, ಥ=th, ದ=d, ಧ=dh, ನ=n
+- Palatal: ಚ=c (NOT ch), ಛ=ch
+- Aspirated: ಖ=kh, ಘ=gh, ಛ=ch, ಝ=jh, ಥ=th, ಧ=dh, ಫ=ph, ಭ=bh
 """
 
-# Optimized for Sarvam-M (24B): Focuses on deep linguistic reasoning and etymological nuance
-DEEP_PROMPT = """
-You are an expert Kannada Lexicographer specializing in Dravidian linguistics. 
-Output raw Wikitext ONLY. 
+# Hardened Validator for secondary pass
+VALIDATOR_PROMPT = """
+You are a ruthless QA Editor for Kannada Wiktionary. 
+Review the draft and perform these EXACT fixes:
 
-I. FEW-SHOT REASONING:
-- Use the <examples> as a structural "Golden Standard".
-- If an example shows a specific conjugation class (like kn-conj-isu), apply that logic to the target word if applicable.
+1. TRANSLITERATION AUDIT: 
+   - Cross-check EVERY `tr=` value against the Kannada script in the same line.
+   - Fix missing underdots for retroflexes: ಟ, ಡ, ಣ, ಳ → ṭ, ḍ, ṇ, ḷ.
+   - Fix missing macrons for long vowels: ಆ, ಈ, ಊ, ಏ, ಓ → ā, ī, ū, ē, ō.
+   - Change 'ch' to 'c' for ಚ.
+   - Example: Change tr=Avalu to tr=Avaḷu. Change tr=chennagi to tr=cennāgi.
 
-II. LINGUISTIC DEPTH:
-- Distinguish between 'tatsama' (direct Sanskrit loans) and 'tadbhava' (modified loans).
-- For etymology, provide the Proto-Dravidian root (e.g., {{inh|kn|dra-pro|*...}}) if the word is native.
-- Provide cognates with native scripts and meanings (t=meaning).
+2. ETYMOLOGY VETTING:
+   - If the etymology claims a native Dravidian word (like ನಡೆ) comes from English or looks like a hallucination, replace it with {{rfe|kn}}.
 
-III. USAGE & GRAMMAR:
-- Generate 2 natural, simple sentences.
-- Ensure verbs end in the appropriate ending for their subject, e.g. -ಳು if the subject is "ಅವಳು."
-- Include 'Usage notes' if the word has subtle semantic differences from English equivalents.
+3. GLIDE CHECK:
+   - Ensure verbs ending in -ೆ or -ಿ use the 'y' glide in transliteration when applicable (e.g., naḍeyabēku).
+
+Return ONLY the corrected raw Wikitext. NEVER wrap the wikitext in markdown code blocks like "```wiktionary".
 """
 
 # --- APP UI ---
@@ -179,7 +186,7 @@ model_choice = st.sidebar.radio(
 )
 
 SELECTED_MODEL = 'translategemma:12b' if "Fast" in model_choice else 'mashriram/sarvam-m:latest'
-CURRENT_SYSTEM_PROMPT = FAST_PROMPT if "Fast" in model_choice else DEEP_PROMPT
+CURRENT_SYSTEM_PROMPT = KANNADA_LEXICOGRAPHER_PROMPT if "Fast" in model_choice else DEEP_PROMPT
 st.sidebar.info(f"Using: `{SELECTED_MODEL}`")
 
 st.title("Kannada Wiktionary Generator")
@@ -210,12 +217,12 @@ if word:
         if st.button("Generate Wikitext"):
             progress_bar = st.progress(0)
             status_text = st.empty()
-            timer_text = st.empty()  # Placeholder for the counter
+            timer_text = st.empty()
 
             try:
-                start_time = time.time()  # Start the clock
+                start_time = time.time()
 
-                # BUG FIX: Swapped 'pos_category' to 'pos_categories'
+                # --- SETUP PROMPT ---
                 template_instruction = get_template_logic(word, pos_categories)
 
                 if template_instruction == "IRREGULAR_CHECK":
@@ -226,8 +233,6 @@ if word:
                         template_instruction = "Use {{kn-conj-u-irreg}} for geminates or {{kn-conj-u}} for regular forms."
 
                 example_count = 3 if "Fast" in model_choice else 4
-
-                # BUG FIX: Swapped 'pos_category' to 'pos_categories'
                 examples_block = get_few_shot_examples(ground_truth, pos_categories, word, count=example_count)
 
                 full_prompt = (
@@ -240,28 +245,48 @@ if word:
                     f"Ensure etymology is linguistically plausible for a Dravidian language."
                 )
 
-                status_text.text(f"Generating with {model_choice}...")
+                # --- STEP 1: GENERATE DRAFT ---
+                status_text.text(f"Step 1/2: Drafting entry with {model_choice}...")
                 progress_bar.progress(25)
 
-                # Use streaming to update the timer during the long wait
-                full_content = ""
+                draft_content = ""
                 for chunk in ollama.chat(model=SELECTED_MODEL, messages=[
                     {'role': 'system', 'content': CURRENT_SYSTEM_PROMPT},
                     {'role': 'user', 'content': full_prompt}
                 ], stream=True):
-                    full_content += chunk['message']['content']
+                    draft_content += chunk['message']['content']
+                    elapsed = time.time() - start_time
+                    timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(elapsed)}`")
+
+                if "</think>" in draft_content:
+                    draft_content = draft_content.split("</think>")[-1].strip()
+
+                # --- STEP 2: VALIDATE AND CORRECT ---
+                status_text.text("Step 2/2: Validating transliteration & etymology...")
+                progress_bar.progress(60)
+
+                final_content = ""
+                validation_prompt = f"Target Word: {word}\n\nDraft Wikitext to Correct:\n{draft_content}"
+
+                for chunk in ollama.chat(model=SELECTED_MODEL, messages=[
+                    {'role': 'system', 'content': VALIDATOR_PROMPT},
+                    {'role': 'user', 'content': validation_prompt}
+                ], stream=True):
+                    final_content += chunk['message']['content']
                     elapsed = time.time() - start_time
                     timer_text.markdown(f"**⏱️ Elapsed Time:** `{format_time(elapsed)}`")
 
                 progress_bar.progress(100)
                 status_text.text("Done!")
 
-                if "</think>" in full_content:
-                    full_content = full_content.split("</think>")[-1].strip()
-                st.session_state['current_result'] = full_content
+                if "</think>" in final_content:
+                    final_content = final_content.split("</think>")[-1].strip()
+
+                st.session_state['current_result'] = final_content
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
             finally:
                 time.sleep(1)
                 progress_bar.empty()

@@ -10,17 +10,20 @@ load_dotenv()
 # --- DATA MANAGEMENT ---
 JSON_FILE = 'verified_kannada_entries.json'
 
+
 def load_ground_truth():
     if os.path.exists(JSON_FILE) and os.path.getsize(JSON_FILE) > 0:
         with open(JSON_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     return {}
 
+
 def save_to_ground_truth(word, entry):
     data = load_ground_truth()
     data[word] = entry
     with open(JSON_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 def format_time(seconds):
     seconds = int(seconds)
@@ -30,14 +33,10 @@ def format_time(seconds):
     if minutes < 60: return f"{minutes}m {remaining_seconds}s"
     return f"{minutes // 60}h {minutes % 60}m {remaining_seconds}s"
 
+
 def get_dynamic_morphology_block(word, pos_categories):
-    """
-    Returns both the correct header and the template string.
-    This completely removes the burden of matching headers to templates from the LLM.
-    """
     blocks = []
     last_char = word[-1] if word else ""
-
     for pos in pos_categories:
         if pos == "Noun":
             header = "====Declension===="
@@ -49,7 +48,6 @@ def get_dynamic_morphology_block(word, pos_categories):
             else:
                 template = f"{{{{kn-decl-a|{word}}}}}"
             blocks.append(f"{header}\n{template}")
-
         elif pos == "Verb":
             header = "====Conjugation===="
             if word.endswith("ಕೊಳ್ಳು"):
@@ -63,8 +61,8 @@ def get_dynamic_morphology_block(word, pos_categories):
             else:
                 template = "IRREGULAR_CHECK"
             blocks.append(f"{header}\n{template}")
-
     return "\n\n".join(blocks) if blocks else ""
+
 
 def get_few_shot_examples(current_ground_truth, pos_categories, target_word, count=2):
     if not current_ground_truth: return ""
@@ -75,45 +73,41 @@ def get_few_shot_examples(current_ground_truth, pos_categories, target_word, cou
             examples.append(f"Word: {word}\nOutput:\n{wikitext}\n---")
     return "\n".join([f"\nExample {i + 1}:\n{ex}" for i, ex in enumerate(examples)])
 
+
 # --- SYSTEM PROMPTS ---
 
-# STEP 1: DRAFTING
 DRAFTER_PROMPT = """
-You are an expert Lexicographer. 
-TASK: You will be provided with a partially filled Wiktionary skeleton. You must ONLY fill in the remaining placeholder blocks. Output raw Wikitext ONLY.
+You are an expert Lexicographer. TASK: Fill placeholders in the provided Wiktionary skeleton.
 
-INSTRUCTIONS FOR FILLING THE SKELETON:
-1. ETYMOLOGY_ENTRY: 
-   - IF the target word contains aspirated consonants (ಖ, ಘ, ಛ, ಝ, ಠ, ಢ, ಥ, ಧ, ಫ, ಭ), it is a Sanskrit borrowing. Replace the placeholder with: `{{bor|kn|sa|DEVANAGARI_WORD}}` (e.g., {{bor|kn|sa|भूमि}}).
-   - ELSE, it is likely native or unknown. Replace the placeholder with: `{{rfe|kn}}`.
-2. USAGE_NOTES_ENTRY: 
-   - Replace the placeholder with exactly ONE sophisticated, formal example sentence using the template: `* {{ux|kn|KANNADA_SENTENCE|tr=TRANSLITERATION|t=ENGLISH_TRANSLATION}}`
+1. ETYMOLOGY: If the skeleton contains the placeholder `DEVANAGARI_WORD`, replace it with the target word written in Devanagari script (e.g., replace `DEVANAGARI_WORD` with `स्नानगृह`). Do not change it if it says `{{rfe|kn}}`.
+2. USAGE_NOTES_ENTRY: Replace with exactly ONE formal example: `* {{ux|kn|KANNADA_SCRIPT_HERE|tr=ISO_15919_ROMAN|t=ENGLISH_TRANSLATION}}`. 
+   - CRITICAL: 'tr=' MUST use Roman script. 't=' MUST be in English.
 
-CRITICAL: Do not alter the headers, the English definitions, or the morphology templates that have already been populated in the skeleton. Do not wrap output in markdown.
+CRITICAL STRUCTURAL RULES:
+- FULL OUTPUT: You MUST output the ENTIRE Wiktionary entry from top to bottom. Do NOT just output the filled placeholders.
+- HEADERS: Do NOT delete the headers (e.g., ==Kannada==, ===Etymology===, ===Noun===).
+- DEFINITIONS: Do NOT change the English words in the `# [[ ]]` line. Leave the English meaning exactly as it is in the skeleton.
 """
 
-# STEP 2: LOGIC & ETYMOLOGY AUDIT
 LOGIC_AUDITOR_PROMPT = """
-You are a strict Linguistic QA Editor. 
-TASK: Fix logic errors in the draft and output ONLY raw Wikitext.
+You are a strict Linguistic QA Editor. Fix errors and output the ENTIRE raw Wikitext.
 
-1. DEVANAGARI AUDIT: Check the `{{bor|kn|sa|...}}` template. If the word inside is written in Kannada script (like ಭೂಮಿ), you MUST translate it into Devanagari script (like भूमि).
-2. SCRIPT CONTAMINATION: Check the `{{kn-IPA|...}}` template. It MUST contain the target word in Kannada script. Change Malayalam (e.g., ഭൂമി) or Telugu scripts back to Kannada.
-3. STRUCTURAL PRESERVATION: Do NOT delete the `====Declension====`, `====Conjugation====`, or `===References===` headers.
+1. DEVANAGARI AUDIT: If the etymology line contains the literal text 'DEVANAGARI_WORD', you MUST replace that text with the target Kannada word translated into actual Devanagari script.
+2. PARAMETER AUDIT: Ensure the first parameter of `{{ux}}` contains Kannada script. Ensure 'tr=' is Roman and 't=' is English. If they contain Kannada, translate/transliterate them correctly.
+3. DEFINITION AUDIT: Ensure the '#' line contains the provided English meaning in brackets. Change it back to English if the draft used Kannada.
+4. STRUCTURE (CRITICAL): You MUST ensure the output starts exactly with `==Kannada==` and retains ALL headers (e.g., ===Etymology===, ====Usage notes====). Do not delete them.
 """
 
-# STEP 3: ATOMIC TRANSLITERATION AUDIT
 TRANSLIT_AUDITOR_PROMPT = """
-TASK: Fix the Roman transliteration (`tr=`) in the provided Wikitext. Output ONLY raw Wikitext. DO NOT change anything else.
+TASK: Fix the Roman transliteration (tr=) in the provided Wikitext. Output the ENTIRE raw Wikitext.
 
-TRANSLITERATION RULES (ISO 15919):
-1. EXACT CHARACTER MAPPING: Map character-by-character. Respect joined words (sandhi) exactly as written in the Kannada text.
-2. DENTALS (NO UNDERDOTS): ತ = t, ದ = d, ನ = n.
-3. RETROFLEXES (UNDERDOTS REQUIRED): ಟ = ṭ, ಡ = ḍ, ಣ = ṇ, ಳ = ḷ, ಷ = ṣ.
-4. MACRONS: ಆ = ā, ಈ = ī, ಊ = ū, ಏ = ē, ಓ = ō.
-5. CASE PRESERVATION: Do not arbitrarily capitalize words in the middle of the transliterated sentence.
+1. CHARACTER-LITERAL: Map character-by-character (e.g., ಳ is ḷ, ಷ is ṣ, ಣ is ṇ). NEVER drop or skip syllables at the end of long words.
+2. SANDHI & SUFFIX PRESERVATION: NEVER insert spaces where the Kannada script has none. If the script has a long suffix (e.g., ಸ್ವಾತಂತ್ರ್ಯಕ್ಕಾಗಿ), the transliteration MUST spell out every single letter (e.g., svātantryakkāgi). Do not truncate it or collapse it into sloppy spoken forms (e.g., do NOT write 'svātantryakki').
+3. LATIN SCRIPT ONLY: If 'tr=' contains Kannada script, replace it with correct ISO 15919 Roman script.
+4. MACRONS: Use ā, ē, ī, ō, ū correctly (e.g., ಅನೇಕ is anēka).
+5. CASE: Do not arbitrarily capitalize words in the middle of sentences.
 
-CRITICAL: Do not wrap your output in ```wikitext blocks. Output must start exactly with ==Kannada==.
+CRITICAL: Output must start exactly with ==Kannada==. Do not wrap in markdown.
 """
 
 # --- APP UI ---
@@ -123,16 +117,9 @@ DRAFTER_MODEL = 'translategemma:27b'
 LOGIC_MODEL = 'gemma2:9b'
 PROOFREADER_MODEL = 'translategemma:4b'
 
-st.sidebar.title("Model Desk")
-st.sidebar.info(f"1. Drafter: `{DRAFTER_MODEL}`\n2. Linguist: `{LOGIC_MODEL}`\n3. Proofreader: `{PROOFREADER_MODEL}`")
-
 st.title("Kannada Wiktionary Generator")
 word = st.text_input("Enter word:")
 translation = st.text_input("Enter translation:")
-
-if "last_word" not in st.session_state or st.session_state["last_word"] != word:
-    st.session_state["last_word"] = word
-    st.session_state.pop('current_result', None)
 
 pos_categories = st.multiselect("POS:", ["Noun", "Verb", "Adjective", "Adverb"], default=["Noun"])
 
@@ -148,27 +135,27 @@ if word:
             timer_text = st.empty()
             try:
                 start_time = time.time()
-
-                # --- PYTHON DYNAMIC SKELETON GENERATION ---
                 morphology_block = get_dynamic_morphology_block(word, pos_categories)
                 if "IRREGULAR_CHECK" in morphology_block:
                     stem = word.removesuffix("ು")
                     morphology_block = morphology_block.replace("IRREGULAR_CHECK",
                                                                 f"{{{{kn-conj-u|{word}|{stem}ಿ|{stem}ಿದ}}}}")
 
-                # -> MOVED THESE LINES OUTSIDE THE IF BLOCK <-
-                # Determine primary POS for the header
                 primary_pos = pos_categories[0] if pos_categories else "Noun"
                 pos_template = f"{{{{kn-{primary_pos.lower()}}}}}"
-
-                # Handle multiple comma-separated meanings for Wikilinks
                 formatted_translation = ", ".join([f"[[{t.strip()}]]" for t in translation.split(",") if t.strip()])
 
-                # Construct the raw skeleton
+                # --- PYTHON ETYMOLOGY LOGIC ---
+                sanskrit_triggers = set("ಖಘಛಝಠಢಥಧಫಭಋೃಶಷಃಙಞ")
+                if any(char in word for char in sanskrit_triggers):
+                    etymology_line = "{{bor|kn|sa|DEVANAGARI_WORD}}"
+                else:
+                    etymology_line = "{{rfe|kn}}"
+
                 wiktionary_skeleton = f"""==Kannada==
 
 ===Etymology===
-ETYMOLOGY_ENTRY
+{etymology_line}
 
 ===Pronunciation===
 * {{{{kn-IPA|{word}}}}}
@@ -183,20 +170,15 @@ USAGE_NOTES_ENTRY
 {morphology_block}
 
 ===References===
-* {{{{R:kn:Alar}}}}
-"""
+* {{{{R:kn:Alar}}}}"""
+
                 examples_block = get_few_shot_examples(ground_truth, pos_categories, word)
 
                 # STEP 1: DRAFTING
                 status_text.text("Step 1/3: Drafting...")
                 progress_bar.progress(10)
+                drafter_user_content = f"### Context Examples:\n{examples_block}\n\n### Target Skeleton to Fill:\n{wiktionary_skeleton}"
                 draft = ""
-
-                drafter_user_content = (
-                    f"### Context Examples:\n{examples_block}\n\n"
-                    f"### Target Skeleton to Fill Out:\n{wiktionary_skeleton}\n"
-                )
-
                 for chunk in ollama.chat(model=DRAFTER_MODEL, messages=[{'role': 'system', 'content': DRAFTER_PROMPT},
                                                                         {'role': 'user',
                                                                          'content': drafter_user_content}],
@@ -209,9 +191,16 @@ USAGE_NOTES_ENTRY
                 progress_bar.progress(40)
                 logic_entry = ""
 
+                # CRITICAL PIPELINE FIX: Passing the actual context to the Auditor!
+                logic_user_content = (
+                    f"Target Word: {word}\n"
+                    f"Required English Meaning: {translation}\n\n"
+                    f"Draft Wikitext to Correct:\n{draft}"
+                )
+
                 for chunk in ollama.chat(model=LOGIC_MODEL,
                                          messages=[{'role': 'system', 'content': LOGIC_AUDITOR_PROMPT},
-                                                   {'role': 'user', 'content': draft}], stream=True):
+                                                   {'role': 'user', 'content': logic_user_content}], stream=True):
                     logic_entry += chunk['message']['content']
                     timer_text.markdown(f"**⏱️ Total Time:** `{format_time(time.time() - start_time)}`")
 
@@ -225,25 +214,17 @@ USAGE_NOTES_ENTRY
                     final_entry += chunk['message']['content']
                     timer_text.markdown(f"**⏱️ Total Time:** `{format_time(time.time() - start_time)}`")
 
-                # --- PYTHON MARKDOWN BLEED CLEANUP ---
-                # Ruthlessly strip any markdown block characters that the models might have added
-                final_entry = final_entry.replace("```wikitext", "").replace("```wiktionary", "").replace("```",
-                                                                                                          "").strip()
-
+                final_entry = final_entry.replace("```wikitext", "").replace("```", "").strip()
                 if "==Kannada==" in final_entry:
                     final_entry = "==Kannada==" + final_entry.split("==Kannada==")[-1]
-
-                st.session_state['current_result'] = final_entry.strip().removesuffix("---").strip()
+                st.session_state['current_result'] = final_entry
                 progress_bar.progress(100)
                 status_text.text("Done!")
 
             except Exception as e:
                 st.error(f"Error: {e}")
             finally:
-                time.sleep(1)
-                progress_bar.empty()
-                status_text.empty()
-                timer_text.empty()
+                time.sleep(1); progress_bar.empty(); status_text.empty(); timer_text.empty()
 
     if 'current_result' in st.session_state:
         edited_entry = st.text_area("Verify:", st.session_state['current_result'], height=400)

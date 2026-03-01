@@ -66,12 +66,10 @@ def get_dynamic_morphology_block(word, pos_categories):
 
 
 def get_few_shot_sentences(current_ground_truth, target_word, count=2):
-    """Parses existing ground truth to extract ONLY the example sentences for the Drafter."""
     if not current_ground_truth: return ""
     examples = []
     for word, wikitext in current_ground_truth.items():
         if len(examples) >= count: break
-        # Regex to extract the Kannada and English parts from the ux template
         match = re.search(r'\{\{ux\|kn\|(.*?)\|tr=.*?\|t=(.*?)\}\}', wikitext)
         if match:
             kn_sent = match.group(1).strip()
@@ -81,7 +79,6 @@ def get_few_shot_sentences(current_ground_truth, target_word, count=2):
 
 
 def parse_kannada_english(text):
-    """Safely extracts the Kannada and English strings from LLM output."""
     kn, en = "", ""
     if "KANNADA:" in text and "ENGLISH:" in text:
         kn = text.split("KANNADA:")[1].split("ENGLISH:")[0].replace("```", "").strip()
@@ -89,11 +86,63 @@ def parse_kannada_english(text):
     return kn, en
 
 
+# --- PYTHON TRANSLITERATION LOGIC ---
+def transliterate_kannada_to_iso(text):
+    """Deterministically maps Kannada text to ISO 15919 transliteration."""
+    KANNADA_CONSONANTS = {
+        'ಕ': 'k', 'ಖ': 'kh', 'ಗ': 'g', 'ಘ': 'gh', 'ಙ': 'ṅ',
+        'ಚ': 'c', 'ಛ': 'ch', 'ಜ': 'j', 'ಝ': 'jh', 'ಞ': 'ñ',
+        'ಟ': 'ṭ', 'ಠ': 'ṭh', 'ಡ': 'ḍ', 'ಢ': 'ḍh', 'ಣ': 'ṇ',
+        'ತ': 't', 'ಥ': 'th', 'ದ': 'd', 'ಧ': 'dh', 'ನ': 'n',
+        'ಪ': 'p', 'ಫ': 'ph', 'ಬ': 'b', 'ಭ': 'bh', 'ಮ': 'm',
+        'ಯ': 'y', 'ರ': 'r', 'ಲ': 'l', 'ವ': 'v', 'ಶ': 'ś', 'ಷ': 'ṣ', 'ಸ': 's', 'ಹ': 'h', 'ಳ': 'ḷ',
+        'ಱ': 'ṟ', 'ೞ': 'ḻ'  # Obsolete but included for completeness
+    }
+    KANNADA_VOWELS = {
+        'ಅ': 'a', 'ಆ': 'ā', 'ಇ': 'i', 'ಈ': 'ī', 'ಉ': 'u', 'ಊ': 'ū',
+        'ಋ': 'ṛ', 'ಎ': 'e', 'ಏ': 'ē', 'ಐ': 'ai', 'ಒ': 'o', 'ಓ': 'ō', 'ಔ': 'au'
+    }
+    KANNADA_MATRAS = {
+        'ಾ': 'ā', 'ಿ': 'i', 'ೀ': 'ī', 'ು': 'u', 'ೂ': 'ū',
+        'ೃ': 'ṛ', 'ೆ': 'e', 'ೇ': 'ē', 'ೈ': 'ai', 'ೊ': 'o', 'ೋ': 'ō', 'ೌ': 'au'
+    }
+    KANNADA_MODIFIERS = {'ಂ': 'ṃ', 'ಃ': 'ḥ'}
+    VIRAMA = '್'
+    ZWNJ = '\u200C'
+    ZWJ = '\u200D'
+
+    result = ""
+    for i, char in enumerate(text):
+        if char in KANNADA_CONSONANTS:
+            result += KANNADA_CONSONANTS[char]
+            # Lookahead to see if we need to append the inherent 'a' (schwa)
+            if i + 1 < len(text):
+                next_char = text[i + 1]
+                if next_char not in KANNADA_MATRAS and next_char != VIRAMA:
+                    result += 'a'
+            else:
+                result += 'a'  # End of string gets the inherent 'a'
+        elif char in KANNADA_VOWELS:
+            result += KANNADA_VOWELS[char]
+        elif char in KANNADA_MATRAS:
+            result += KANNADA_MATRAS[char]
+        elif char == VIRAMA:
+            pass  # We simply skip it; the lookahead logic already stopped the 'a' from being appended
+        elif char in KANNADA_MODIFIERS:
+            result += KANNADA_MODIFIERS[char]
+        elif char in [ZWNJ, ZWJ]:
+            pass  # Ignore invisible joiners
+        else:
+            result += char  # Passes through spaces, english letters, and punctuation
+
+    return result
+
+
 # --- NEW MICRO-PROMPTS ---
 
 DRAFTER_PROMPT = """
 You are an expert Kannada linguist. 
-TASK: Write ONE sophisticated, formal example sentence in Kannada using the provided target word, and provide its English translation.
+TASK: Write ONE brief (<= 8 words), formal example sentence in Kannada using the provided target word, and provide its English translation.
 
 CRITICAL RESTRICTION: Do NOT output Wikitext formatting. Do NOT output conversational filler.
 You MUST output exactly in this format:
@@ -102,47 +151,25 @@ ENGLISH: [Your English translation here]
 """
 
 LOGIC_AUDITOR_PROMPT = """
-You are a strict Linguistic QA Editor. 
+You are a strict Linguistic QA Editor for Kannada. 
 TASK: Review the provided Kannada sentence and its English translation. 
-1. Ensure the Kannada sentence is grammatically flawless, formal, and naturally uses the target word.
-2. Ensure the English translation is accurate.
+
+RULES:
+1. PRESERVATION FIRST: If the drafted Kannada sentence is already grammatically flawless, formal, and naturally uses the target word, YOU MUST KEEP IT EXACTLY AS IS. Do not rewrite or alter a sentence just for the sake of making a change.
+2. GRAMMAR AUDIT: Only make corrections if there is a genuine error. If you must correct it, pay strict attention to Kannada subject-verb agreement (e.g., ensure gender and number match perfectly, such as 'ಅವಳು' with a feminine verb ending, not a neuter one).
+3. TRANSLATION MATCH: Ensure the English translation accurately reflects the Kannada sentence.
 
 CRITICAL RESTRICTION: Do NOT output Wikitext. Do NOT output conversational filler.
 You MUST output exactly in this format:
-KANNADA: [Corrected Kannada sentence here]
-ENGLISH: [Corrected English translation here]
-"""
-
-TRANSLIT_AUDITOR_PROMPT = """
-TASK: Provide the exact ISO 15919 Roman transliteration for the provided Kannada text.
-
-RULES:
-1. CHARACTER-LITERAL MAPPING: Map strictly character-by-character.
-2. ASPIRATED CONSONANTS (MAHAPRANA): Do NOT drop the 'h' in aspirated letters. 
-   - ಭ = bh (e.g., ಸಮಾರಂಭದಲ್ಲಿ is samāraṃbhadalli, NEVER samāraṃbadalli).
-   - ಘ = gh, ಛ = ch, ಠ = ṭh, ಢ = ḍh, ಥ = th, ಧ = dh, ಫ = ph.
-3. GEMINATION (VATTAKSHARA): When a consonant has a subscript of itself, you MUST double the Latin consonant. 
-   - ದ್ದ = dd (e.g., ಧರಿಸಿದ್ದರು is dharisiddaru, NEVER dharisidaru).
-   - ಕ್ಕ = kk, ಟ್ಟ = ṭṭ, ನ್ನ = nn, ಮ್ಮ = mm, ಲ್ಲ = ll, etc.
-4. VOWEL SIGN (MATRA) MAPPING: Ensure the transliteration follows the vowel sign attached to the consonant:
-   - Inherited (no sign): a (e.g., ತ = ta)
-   - ಾ = ā | ಿ = i | ೀ = ī | ು = u | ೂ = ū
-   - ೆ = e | ೇ = ē | ೊ = o | ೋ = ō
-   - ೌ = au | ೈ = ai
-5. NO SCHWA DELETION: Do NOT drop the inherent 'a' at the end of words (e.g., ಔಪಚಾರಿಕ is aupacārika).
-6. ANUSVARA: ಂ = ṃ.
-7. SANDHI PRESERVATION: If the script has no spaces, the transliteration must have no spaces.
-8. CASE: Do not arbitrarily capitalize words in the middle of sentences.
-
-CRITICAL: Output ONLY the raw transliterated string. No labels, no markdown, no quotes.
+KANNADA: [Final Kannada sentence here]
+ENGLISH: [Final English translation here]
 """
 
 # --- APP UI ---
 st.set_page_config(page_title="Kannada Wiktionary Gen", page_icon="🌿")
 
 DRAFTER_MODEL = 'translategemma:27b'
-LOGIC_MODEL = 'gemma2:9b'
-PROOFREADER_MODEL = 'translategemma:12b'
+LOGIC_MODEL = 'translategemma:27b'
 
 st.title("Kannada Wiktionary Generator")
 word = st.text_input("Enter word:")
@@ -198,8 +225,8 @@ if word:
                     # Parse the sentence and translation
                     kn_draft, en_draft = parse_kannada_english(draft_output)
 
-                # --- STEP 2: LOGIC AUDIT (9B) ---
-                with st.expander("🛡️ Step 2: Logic Auditor (9B)", expanded=True):
+                # --- STEP 2: LOGIC AUDIT (27B) ---
+                with st.expander("🛡️ Step 2: Logic Auditor (27B)", expanded=True):
                     step2_placeholder = st.empty()
                     logic_user_content = f"Target Word: {word}\nRequired Meaning: {translation}\n\nDraft:\nKANNADA: {kn_draft}\nENGLISH: {en_draft}"
                     logic_output = ""
@@ -214,17 +241,11 @@ if word:
                     # Failsafe if the parser fails
                     if not final_kn: final_kn, final_en = kn_draft, en_draft
 
-                # --- STEP 3: TRANSLITERATION (12B) ---
-                with st.expander("🔤 Step 3: Transliteration Proofreader (12B)", expanded=True):
-                    step3_placeholder = st.empty()
-                    translit_output = ""
-                    for chunk in ollama.chat(model=PROOFREADER_MODEL,
-                                             messages=[{'role': 'system', 'content': TRANSLIT_AUDITOR_PROMPT},
-                                                       {'role': 'user', 'content': final_kn}], stream=True):
-                        translit_output += chunk['message']['content']
-                        step3_placeholder.markdown(translit_output)
-
-                    final_tr = translit_output.replace("```", "").strip()
+                # --- STEP 3: TRANSLITERATION (PYTHON) ---
+                with st.expander("🔤 Step 3: Transliteration Proofreader (Python Logic)", expanded=True):
+                    final_tr = transliterate_kannada_to_iso(final_kn)
+                    st.markdown(f"**Target Sentence:** `{final_kn}`")
+                    st.markdown(f"**ISO 15919 Transliteration:** `{final_tr}`")
 
                 # --- PYTHON FINAL ASSEMBLY ---
                 st.success(f"Generation Complete! ({format_time(time.time() - start_time)})")

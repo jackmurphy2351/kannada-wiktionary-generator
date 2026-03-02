@@ -1,78 +1,55 @@
 # 🌿 Kannada Wiktionary Generator
-The **Kannada Wiktionary Generator** is a specialized tool designed to assist language learners and lexicographers in creating high-quality, standardized Wiktionary entries for Kannada words. By combining deterministic linguistic rules with a "Few-Shot" LLM approach, the app ensures that generated entries adhere to complex Wikitext formatting while maintaining high etymological and grammatical accuracy.
 
-## 🎯 Project Goals
-* **Learner-Centric:** Focus on generating entries with clear usage examples and SOV-structured sentences to aid Kannada learners.
+The **Kannada Wiktionary Generator** is a specialized, semi-automated pipeline designed to assist lexicographers and language enthusiasts in creating high-quality, standardized Wiktionary entries for Kannada words. 
 
-* **Linguistic Consistency:** Automate the selection of declension and conjugation templates based on the grammatical properties of the target word.
-
-* **Knowledge Persistence:** Maintain a "Ground Truth" of verified entries that act as a golden standard for future generations.
-
-## 🧠 Model Selection
-The application utilizes **Ollama** to run two distinct classes of local LLMs:
-
-* **TranslateGemma (12B) - "Fast Mode":** Optimized for cross-lingual accuracy and strict template adherence. Recommended for straightforward nouns and regular verbs.
-
-* **Sarvam-M (24B) - "Deep Mode":** A larger model focused on deep linguistic reasoning and etymological nuance. Recommended for complex etymologies and irregular morphology.
+By combining web scraping, deterministic linguistic rules, Unicode manipulation, and a "Few-Shot" Local LLM approach, the app ensures that generated entries adhere to complex Wikitext formatting while maintaining strict etymological and grammatical accuracy.
 
 ## 🛠️ Key Features
-**1. Deterministic Morphology Selection**  
-The app identifies the correct Wiktionary templates by analyzing word endings:
 
+**1. Automated Etymology & Cognate Engine** The app scrapes the University of Chicago's Digital South Asia Library (DSAL) Kittel Dictionary:
+* **Marker Extraction:** Intelligently parses Kittel's specific abbreviations (e.g., `Tbh.`, `Ts.`, `H.`) to identify Tatsama, Tadbhava, Hindustani, and English/Portuguese loanwords.
+* **Sanskrit Fallback:** Uses an orthographical heuristic to identify aspirated consonants and specific sibilants (like ಭ, ಧ, ಷ) to catch unmarked Sanskrit borrowings.
+* **Cognate Script Shifting:** Identifies Dravidian sister-language cognates (Malayalam, Tamil, Telugu, Tulu, Marathi) and uses Unicode offset mathematics to automatically translate Kittel's Kannada-script cognates into their native Indic scripts (e.g., converting 'ಎರಿ' to 'എരി' for Malayalam).
+
+**2. Deterministic Morphology Selection** Identifies the correct Wiktionary morphology templates by analyzing word endings:
 * **Nouns:** Automatically chooses between `kn-decl-u`, `kn-decl-e-i-ai`, or `kn-decl-a` based on the final vowel character.
-
 * **Verbs:** Identifies reflexive forms (`-ಕೊಳ್ಳು`), causative forms (`-ಿಸು`), or regular endings to apply the appropriate conjugation template.
 
-**2. Few-Shot Ground Truth System**  
-The application uses `verified_kannada_entries.json` as a local knowledge base. Before generating a new entry, the system:
+**3. AI Example Generation & Manual Bypass** Generates highly accurate Subject-Object-Verb (SOV) Kannada example sentences using the `{{ux|kn|...}}` template. 
+* **Ollama Integration:** Uses a dual-agent LLM pipeline (a Drafter and a Logic Auditor) powered by `translategemma:27b` to write and verify grammar.
+* **Manual Override:** Allows users to input their own pre-written Kannada sentence and English translation, completely bypassing the AI generation step to save time and compute.
 
-1. Searches the JSON for words with matching parts of speech or structural templates.
-2. Feeds these "golden entries" into the LLM prompt as context.
-3. Ensures the model mimics the formatting of previously verified data.
+**4. Automatic Transliteration** Includes a custom Python engine that deterministically maps Kannada text to the standard ISO 15919 transliteration format required by Wiktionary.
 
-**3. Sentence Sandbox**  
-A dedicated module for generating three simple Subject-Object-Verb (SOV) Kannada sentences using the `{{ux|kn|...}}` template, allowing users to verify usage before saving to the ground truth.
+**5. Few-Shot Ground Truth System** Maintains a local `verified_kannada_entries.json` database. The app automatically feeds previously verified, high-quality entries into the LLM prompt to ensure the model mimics standard Wikitext formatting perfectly.
 
-📂 Project Structure
-* `app.py`: The core Streamlit application containing the UI, linguistic logic, and Ollama integration.
+## ⚙️ Workflow
 
-* `verified_kannada_entries.json`: The storage file for all high-quality, user-verified Wikitext entries.
-
-* `requirements.txt`: Python dependencies.
-
-* `LICENSE`: MIT License.
+The application operates in a strict, two-step pipeline to prevent data bleeding:
+* **Step 1: Etymology Lookup.** Enter a word and fetch its roots and cognates from the DSAL Kittel database. Review the audit logs to see exactly which tags or patterns triggered the result.
+* **Step 2: Entry Assembly.** Once the etymology is confirmed, provide an optional manual example sentence (or rely on the local AI), and click "Generate" to stitch the final Wikitext entry together. Verify the output and save it to the local database.
 
 ## 🚀 Setup & Installation
+
 ### Prerequisites
+* Python 3.8+
 * [Ollama](https://ollama.com/) installed and running locally.
-
-* Download the required models:
-
-```Bash
-ollama pull translategemma:12b
-ollama pull mashriram/sarvam-m:latest
+* Download the required 27B model for drafting and auditing:
+```bash
+ollama pull translategemma:27b
 ```
-### Installation
-**1. Clone the repository:**
 
-```Bash
+### Installation
+#### 1. Clone the repository:
+```bash
 git clone [your-repo-url]
 cd kannada-wiktionary-generator
 ```
-**2. Install Python dependencies:**
-
-```Bash
+#### 2. Install Python dependencies:
+```bash
 pip install -r requirements.txt
 ```
-
-**3. Environment Setup:**
-Create a `.env` file for any local environment variables (if required).
-
-**4. Run the Application:**
-
-```Bash
-streamlit run app.py
-```
+*(Ensure your requirements include `streamlit`, `requests`, `beautifulsoup4`, `ollama`, and `python-dotenv`)*
 
 ## 📜 License
 This project is licensed under the MIT License.

@@ -155,7 +155,7 @@ def transliterate_cognate(word, lang_code):
             'ಟ': 'ட', 'ಠ': 'ட', 'ಡ': 'ட', 'ಢ': 'ட', 'ಣ': 'ண',
             'ತ': 'த', 'ಥ': 'த', 'ದ': 'த', 'ಧ': 'த', 'ನ': 'ந',
             'ಪ': 'ப', 'ಫ': 'ப', 'ಬ': 'ப', 'ಭ': 'ப', 'ಮ': 'ம',
-            'ಯ': 'ய', 'ರ': 'ர', 'ல': 'ல', 'ವ': 'வ',
+            'ಯ': 'ய', 'ರ': 'ர', 'ಲ': 'ல', 'ವ': 'வ',
             'ಶ': 'ஶ', 'ಷ': 'ஷ', 'ಸ': 'ஸ', 'ಹ': 'ஹ',
             'ಳ': 'ள', 'ಱ': 'ற', 'ೞ': 'ழ',
             'ಾ': 'ா', 'ಿ': 'ி', 'ೀ': 'ீ', 'ು': 'ு', 'ೂ': 'ூ', 'ೃ': '்ரு',
@@ -258,7 +258,7 @@ def source_etymology(target_word):
                     lang_name, lang_code = lang_map[abbr]
                     native_script_word = transliterate_cognate(cog_word, lang_code)
 
-                    cog_str = f"{lang_name} {{{{cog|{lang_code}|{native_script_word}}}}}"
+                    cog_str = f"{{{{cog|{lang_code}|{native_script_word}}}}}"
 
                     if cog_str not in seen_cognates:
                         seen_cognates.add(cog_str)
@@ -351,13 +351,6 @@ st.title("Kannada Wiktionary Generator")
 word = st.text_input("Enter word:")
 translation = st.text_input("Enter translation:")
 pos_categories = st.multiselect("POS:", ["Noun", "Verb", "Adjective", "Adverb"], default=["Noun"])
-
-# User-Provided Example Sentence
-st.markdown("---")
-st.markdown("### 📝 Manual Example Sentence (Optional)")
-st.caption("Provide your own example sentence here to completely bypass the AI generation step.")
-user_kn = st.text_input("Kannada Sentence:")
-user_en = st.text_input("English Translation:")
 st.markdown("---")
 
 # Clear session state if a new word is typed so old etymologies don't bleed over
@@ -399,6 +392,14 @@ if word:
             # --- PIPELINE STEP 2: GENERATION ---
             st.divider()
             st.markdown("### Step 2: Entry Assembly")
+
+            # --- MOVED: User-Provided Example Sentence ---
+            st.markdown("#### 📝 Manual Example Sentence (Optional)")
+            st.caption("Provide your own example sentence here to completely bypass the AI generation step.")
+            user_kn = st.text_input("Kannada Sentence:")
+            user_en = st.text_input("English Translation:")
+            st.markdown("---")
+
             if st.button("✍️ Generate Wiktionary Entry"):
                 st.markdown("### 🔍 Assembly Audit Trail")
                 try:

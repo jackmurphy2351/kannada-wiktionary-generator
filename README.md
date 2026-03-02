@@ -7,15 +7,15 @@ By combining web scraping, deterministic linguistic rules, Unicode manipulation,
 ## 🛠️ Key Features
 
 **1. Automated Etymology & Cognate Engine** The app scrapes the University of Chicago's Digital South Asia Library (DSAL) Kittel Dictionary:
-* **Marker Extraction:** Intelligently parses Kittel's specific abbreviations (e.g., `Tbh.`, `Ts.`, `H.`) to identify Tatsama, Tadbhava, Hindustani, and English/Portuguese loanwords.
+* **Marker Extraction:** Intelligently parses Kittel's specific abbreviations (e.g., `Tbh.`, `Ts.`, `H.`) to identify Tatsama, Tadbhava, and Hindustani loanwords.
 * **Sanskrit Fallback:** Uses an orthographical heuristic to identify aspirated consonants and specific sibilants (like ಭ, ಧ, ಷ) to catch unmarked Sanskrit borrowings.
-* **Cognate Script Shifting:** Identifies Dravidian sister-language cognates (Malayalam, Tamil, Telugu, Tulu, Marathi) and uses Unicode offset mathematics to automatically translate Kittel's Kannada-script cognates into their native Indic scripts (e.g., converting 'ಎರಿ' to 'എരി' for Malayalam).
+* **Cognate Script Shifting:** Identifies Dravidian sister-language cognates (Malayalam, Tamil, Telugu, Tulu) and uses Unicode offset mathematics to automatically translate Kittel's Kannada-script cognates into their native Indic scripts (e.g., converting 'ತಲೆ' to 'తల' for Telugu).
 
 **2. Deterministic Morphology Selection** Identifies the correct Wiktionary morphology templates by analyzing word endings:
 * **Nouns:** Automatically chooses between `kn-decl-u`, `kn-decl-e-i-ai`, or `kn-decl-a` based on the final vowel character.
 * **Verbs:** Identifies reflexive forms (`-ಕೊಳ್ಳು`), causative forms (`-ಿಸು`), or regular endings to apply the appropriate conjugation template.
 
-**3. AI Example Generation & Manual Bypass** Generates highly accurate Subject-Object-Verb (SOV) Kannada example sentences using the `{{ux|kn|...}}` template. 
+**3. AI Example Generation & Manual Bypass** Generates simple Subject-Object-Verb (SOV) Kannada example sentences using the `{{ux|kn|...}}` template. 
 * **Ollama Integration:** Uses a dual-agent LLM pipeline (a Drafter and a Logic Auditor) powered by `translategemma:27b` to write and verify grammar.
 * **Manual Override:** Allows users to input their own pre-written Kannada sentence and English translation, completely bypassing the AI generation step to save time and compute.
 

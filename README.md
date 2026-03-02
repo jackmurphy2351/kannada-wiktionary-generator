@@ -1,4 +1,4 @@
-# 🌿 Kannada Wiktionary Generator
+# 🟨🟥 Kannada Wiktionary Generator 🟥🟨
 
 The **Kannada Wiktionary Generator** is a specialized, semi-automated pipeline designed to assist lexicographers and language enthusiasts in creating high-quality, standardized Wiktionary entries for Kannada words. 
 

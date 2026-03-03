@@ -170,7 +170,8 @@ if word:
 {morphology_block}
 
 ===References===
-* {{{{R:kn:Alar}}}}"""
+* {{{{R:kn:Alar}}}}
+* {{{{R:kn:Kittel}}}}"""
                     st.session_state['current_result'] = final_wikitext
 
                 except Exception as e:

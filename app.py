@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import ollama
+import re
 from dotenv import load_dotenv
 
 from data_manager import load_ground_truth, save_to_ground_truth, format_time
@@ -132,7 +133,34 @@ if word:
                             if not final_kn: final_kn, final_en = kn_draft, en_draft
 
                     with st.expander("🔤 Step 3: Transliteration Proofreader (Python Logic)", expanded=True):
+                        # Generate base transliteration
                         final_tr = transliterate_kannada_to_iso(final_kn)
+
+                        # --- NEW WIKTIONARY BOLDING LOGIC ---
+                        # Standard ASCII straight quotes for Wiktionary bolding
+                        bold_marker = "'''"
+
+                        # 1. Bold the target Kannada word (will naturally bold the stem inside inflections)
+                        if word in final_kn:
+                            final_kn = final_kn.replace(word, f"{bold_marker}{word}{bold_marker}")
+
+                        # 2. Bold the Transliteration
+                        word_tr = transliterate_kannada_to_iso(word)
+                        if word_tr in final_tr:
+                            final_tr = final_tr.replace(word_tr, f"{bold_marker}{word_tr}{bold_marker}")
+
+                        # 3. Bold the English translation
+                        # Grab the primary translation (first item if comma-separated)
+                        primary_en = translation.split(",")[0].strip()
+                        if primary_en:
+                            # Case-insensitive replacement ensuring whole-word match (\b)
+                            final_en = re.sub(
+                                f"(?i)\\b({re.escape(primary_en)})\\b",
+                                f"{bold_marker}\\1{bold_marker}",
+                                final_en
+                            )
+                        # ------------------------------------
+
                         st.markdown(f"**Target Sentence:** `{final_kn}`")
                         st.markdown(f"**ISO 15919 Transliteration:** `{final_tr}`")
 

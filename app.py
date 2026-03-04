@@ -163,9 +163,7 @@ if word:
 ==={primary_pos}===
 {pos_template}
 # {formatted_translation}
-
-====Usage notes====
-* {{{{ux|kn|{final_kn}|tr={final_tr}|t={final_en}}}}}
+#: {{{{ux|kn|{final_kn}|tr={final_tr}|t={final_en}}}}}
 
 {morphology_block}
 

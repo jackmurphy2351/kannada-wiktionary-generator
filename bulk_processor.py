@@ -9,7 +9,8 @@ from core.scraper import source_etymology
 from core.linguistics import get_dynamic_morphology_block
 
 STAGING_FILE = 'data/staged_entries.json'
-BATCH_SIZE = 50  # Set to 5 for the dry run
+DISCARDED_FILE = 'data/discarded_entries.json' # 'Trash can' for discarded entries
+BATCH_SIZE = 50
 
 
 def load_alar_data():
@@ -33,6 +34,17 @@ def build_mvp_wikitext(word, pos, definition, etymology_line, cognate_line, morp
     if cognate_line:
         formatted_etymology += f" {cognate_line}"
 
+    # Fix 1: Map "Adjective" and "Adverb" to their abbreviated Wiktionary templates
+    if pos.lower() == "adjective":
+        pos_template = "adj"
+    elif pos.lower() == "adverb":
+        pos_template = "adv"
+    else:
+        pos_template = pos.lower()
+
+    # Fix 2: Conditionally format the morphology block to prevent multi-line gaps
+    formatted_morphology = f"\n\n{morphology_block}" if morphology_block.strip() else ""
+
     return f"""==Kannada==
 
 ===Etymology===
@@ -42,10 +54,8 @@ def build_mvp_wikitext(word, pos, definition, etymology_line, cognate_line, morp
 * {{{{kn-IPA|{word}}}}}
 
 ==={pos}===
-{{{{kn-{pos.lower()}}}}}
-# [[{definition}]]
-
-{morphology_block}
+{{{{kn-{pos_template}}}}}
+# [[{definition}]]{formatted_morphology}
 
 ===References===
 * {{{{R:kn:Alar}}}}
@@ -60,6 +70,11 @@ def run_batch_processor():
             staged_data = json.load(f)
     else:
         staged_data = {}
+    if os.path.exists(DISCARDED_FILE):
+        with open(DISCARDED_FILE, 'r', encoding='utf-8') as f:
+            discarded_data = json.load(f)
+    else:
+        discarded_data = {}
 
     words_processed = 0
 
@@ -74,7 +89,7 @@ def run_batch_processor():
         if not word or not defs_list:
             continue
 
-        if word in staged_data:
+        if word in staged_data or word in discarded_data:
             continue
 
         if check_wiktionary_entry_exists(word):

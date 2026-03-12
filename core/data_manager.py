@@ -1,7 +1,8 @@
 import os
 import json
 
-JSON_FILE = '../data/verified_kannada_entries.json'
+JSON_FILE = 'data/verified_kannada_entries.json'
+
 
 def load_ground_truth():
     if os.path.exists(JSON_FILE) and os.path.getsize(JSON_FILE) > 0:
@@ -9,11 +10,17 @@ def load_ground_truth():
             return json.load(f)
     return {}
 
+
 def save_to_ground_truth(word, entry):
     data = load_ground_truth()
     data[word] = entry
+
+    # Ensure the directory exists just in case
+    os.makedirs(os.path.dirname(JSON_FILE), exist_ok=True)
+
     with open(JSON_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 def format_time(seconds):
     seconds = int(seconds)

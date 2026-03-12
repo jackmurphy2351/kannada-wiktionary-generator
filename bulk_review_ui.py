@@ -6,8 +6,10 @@ import ollama
 from core.wiktionary_api import upload_to_wiktionary
 from core.llm_service import DRAFTER_PROMPT, parse_kannada_english
 from core.linguistics import transliterate_kannada_to_iso
+from core.data_manager import save_to_ground_truth
 
 STAGING_FILE = 'data/staged_entries.json'
+DISCARDED_FILE = 'data/discarded_entries.json' # <-- NEW CONSTANT
 DRAFTER_MODEL = 'translategemma:27b'
 
 st.set_page_config(page_title="Batch Review Queue", page_icon="📝")
@@ -26,6 +28,16 @@ def save_staged_data(data):
     with open(STAGING_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+def load_discarded_data():
+    try:
+        with open(DISCARDED_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_discarded_data(data):
+    with open(DISCARDED_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 def apply_bolding(word, translation, kn_sent, en_sent, tr_sent):
     """Applies Wiktionary bolding (''') to the target word and its translation."""
@@ -85,15 +97,19 @@ with col1:
             kn_sent, en_sent, tr_sent = apply_bolding(selected_word, definition, kn_sent, en_sent, tr_sent)
 
             # Look specifically for the definition line to insert beneath
-            target_line = f"# [[{definition}]]"
             usage_line = f"#: {{{{ux|kn|{kn_sent}|tr={tr_sent}|t={en_sent}}}}}"
 
-            if target_line in entry_data["wikitext"]:
-                entry_data["wikitext"] = entry_data["wikitext"].replace(target_line, f"{target_line}\n{usage_line}")
+            # Look for the first line that starts with exactly '# ' (the definition line)
+            pattern = re.compile(r"^(# .*?)$", re.MULTILINE)
+
+            if pattern.search(entry_data["wikitext"]):
+                # \1 keeps the original definition line, \n adds a break, and then we append the usage_line
+                entry_data["wikitext"] = pattern.sub(rf"\1\n{usage_line}", entry_data["wikitext"], count=1)
                 save_staged_data(staged_data)
                 st.rerun()
             else:
-                st.error("Could not find the definition line in the Wikitext to insert the example.")
+                st.error(
+                    "Could not find the definition line (starting with '# ') in the Wikitext to insert the example.")
 
 with col2:
     with st.popover("✍️ Add Manual Sentence"):
@@ -105,15 +121,19 @@ with col2:
             # Apply bolding
             man_kn, man_en, tr_sent = apply_bolding(selected_word, definition, man_kn, man_en, tr_sent)
 
-            target_line = f"# [[{definition}]]"
-            usage_line = f"#: {{{{ux|kn|{man_kn}|tr={tr_sent}|t={man_en}}}}}"
+            usage_line = f"#: {{{{ux|kn|{kn_sent}|tr={tr_sent}|t={en_sent}}}}}"
 
-            if target_line in entry_data["wikitext"]:
-                entry_data["wikitext"] = entry_data["wikitext"].replace(target_line, f"{target_line}\n{usage_line}")
+            # Look for the first line that starts with exactly '# ' (the definition line)
+            pattern = re.compile(r"^(# .*?)$", re.MULTILINE)
+
+            if pattern.search(entry_data["wikitext"]):
+                # \1 keeps the original definition line, \n adds a break, and then we append the usage_line
+                entry_data["wikitext"] = pattern.sub(rf"\1\n{usage_line}", entry_data["wikitext"], count=1)
                 save_staged_data(staged_data)
                 st.rerun()
             else:
-                st.error("Could not find the definition line in the Wikitext to insert the example.")
+                st.error(
+                    "Could not find the definition line (starting with '# ') in the Wikitext to insert the example.")
 
 edited_wikitext = st.text_area("Final Wikitext (Edit as needed):", value=entry_data["wikitext"], height=350)
 
@@ -127,15 +147,28 @@ with c1:
     if st.button("🚀 Publish to Wiktionary", type="primary"):
         success, msg = upload_to_wiktionary(selected_word, edited_wikitext)
         if success:
-            staged_data[selected_word]["status"] = "published"
+            # 1. Save to your verified ground truth database
+            save_to_ground_truth(selected_word, edited_wikitext)
+
+            # 2. Remove from the staging queue completely
+            staged_data.pop(selected_word)
             save_staged_data(staged_data)
-            st.success("Published!")
+
+            st.success("Published and saved to ground truth!")
             time.sleep(1.5)
             st.rerun()
         else:
             st.error(msg)
 with c3:
     if st.button("🗑️ Discard/Skip"):
-        staged_data[selected_word]["status"] = "discarded"
+        discarded_data = load_discarded_data()
+
+        # Pop the entry out of staged_data and move it to discarded_data
+        discarded_data[selected_word] = staged_data.pop(selected_word)
+        discarded_data[selected_word]["status"] = "discarded"
+
+        # Save both files
+        save_discarded_data(discarded_data)
         save_staged_data(staged_data)
+
         st.rerun()

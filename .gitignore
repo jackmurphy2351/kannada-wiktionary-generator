@@ -14,3 +14,7 @@ Thumbs.db
 
 # Project files
 .idea/
+
+# Data
+data/
+!data/verified_kannada_entries.json

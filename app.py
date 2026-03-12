@@ -4,11 +4,11 @@ import ollama
 import re
 from dotenv import load_dotenv
 
-from data_manager import load_ground_truth, save_to_ground_truth, format_time
-from linguistics import get_dynamic_morphology_block, transliterate_kannada_to_iso
-from scraper import source_etymology
-from wiktionary_api import check_wiktionary_entry_exists, upload_to_wiktionary
-from llm_service import DRAFTER_PROMPT, LOGIC_AUDITOR_PROMPT, get_few_shot_sentences, parse_kannada_english
+from core.data_manager import load_ground_truth, save_to_ground_truth, format_time
+from core.linguistics import get_dynamic_morphology_block, transliterate_kannada_to_iso
+from core.scraper import source_etymology
+from core.wiktionary_api import check_wiktionary_entry_exists, upload_to_wiktionary
+from core.llm_service import DRAFTER_PROMPT, LOGIC_AUDITOR_PROMPT, get_few_shot_sentences, parse_kannada_english
 
 load_dotenv()
 

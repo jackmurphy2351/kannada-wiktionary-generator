@@ -1,7 +1,7 @@
 import os
 import json
 
-JSON_FILE = 'verified_kannada_entries.json'
+JSON_FILE = '../data/verified_kannada_entries.json'
 
 def load_ground_truth():
     if os.path.exists(JSON_FILE) and os.path.getsize(JSON_FILE) > 0:

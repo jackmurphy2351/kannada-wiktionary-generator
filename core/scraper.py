@@ -1,7 +1,7 @@
 import requests
 import re
 from bs4 import BeautifulSoup
-from linguistics import transliterate_cognate
+from core.linguistics import transliterate_cognate
 
 
 def source_etymology(target_word):

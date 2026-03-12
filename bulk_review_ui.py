@@ -154,8 +154,12 @@ with c1:
             staged_data.pop(selected_word)
             save_staged_data(staged_data)
 
-            st.success("Published and saved to ground truth!")
-            time.sleep(1.5)
+            # 3. Construct the URL and display it
+            wiktionary_url = f"https://en.wiktionary.org/wiki/{selected_word}"
+            st.success(f"Published and saved to ground truth! [View '{selected_word}' on Wiktionary]({wiktionary_url})")
+
+            # Pausing slightly longer to give you time to click the link
+            time.sleep(3)
             st.rerun()
         else:
             st.error(msg)

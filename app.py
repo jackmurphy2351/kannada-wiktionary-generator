@@ -218,7 +218,9 @@ if word:
                 with st.spinner("Authenticating and publishing..."):
                     success, message = upload_to_wiktionary(word, edited_entry)
                     if success:
-                        st.success(message)
+                        # Construct the URL and append it to the success message
+                        wiktionary_url = f"https://en.wiktionary.org/wiki/{word}"
+                        st.success(f"{message} [View '{word}' on Wiktionary]({wiktionary_url})")
                         st.balloons()
                     else:
                         st.error(message)

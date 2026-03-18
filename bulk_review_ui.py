@@ -10,7 +10,7 @@ from core.data_manager import save_to_ground_truth
 
 STAGING_FILE = 'data/staged_entries.json'
 DISCARDED_FILE = 'data/discarded_entries.json' # <-- NEW CONSTANT
-DRAFTER_MODEL = 'translategemma:27b'
+DRAFTER_MODEL = 'translategemma:4b'
 
 st.set_page_config(page_title="Batch Review Queue", page_icon="📝")
 st.title("Bulk Entry Review Queue")

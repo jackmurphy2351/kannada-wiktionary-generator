@@ -14,8 +14,8 @@ load_dotenv()
 
 st.set_page_config(page_title="Kannada Wiktionary Gen", page_icon="🌿")
 
-DRAFTER_MODEL = 'translategemma:27b'
-LOGIC_MODEL = 'translategemma:27b'
+DRAFTER_MODEL = 'translategemma:4b'
+LOGIC_MODEL = 'translategemma:4b'
 
 st.title("Kannada Wiktionary Generator")
 

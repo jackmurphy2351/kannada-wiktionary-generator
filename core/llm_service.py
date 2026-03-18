@@ -1,28 +1,28 @@
 import re
 
 DRAFTER_PROMPT = """
-You are an expert Kannada linguist. 
-TASK: Write ONE brief (<= 8 words), formal example sentence in Kannada using the provided target word, and provide its English translation.
+You are a Kannada linguist.
+TASK: Write ONE short Kannada sentence. 
 
-CRITICAL RESTRICTION: Do NOT output Wikitext formatting. Do NOT output conversational filler.
-You MUST output exactly in this format:
-KANNADA: [Your Kannada sentence here]
-ENGLISH: [Your English translation here]
+CRITICAL RULE: You MUST include the exact target word in your Kannada sentence.
+
+Output ONLY in this exact format:
+KANNADA: [Short sentence containing the target word]
+ENGLISH: [English translation]
 """
 
 LOGIC_AUDITOR_PROMPT = """
-You are a strict Linguistic QA Editor for Kannada. 
-TASK: Review the provided Kannada sentence and its English translation. 
+You are a Kannada grammar editor.
+TASK: Fix any grammar or agreement errors in the provided sentence.
 
-RULES:
-1. PRESERVATION FIRST: If the drafted Kannada sentence is already grammatically flawless, formal, and naturally uses the target word, YOU MUST KEEP IT EXACTLY AS IS. Do not rewrite or alter a sentence just for the sake of making a change.
-2. GRAMMAR AUDIT: Only make corrections if there is a genuine error. If you must correct it, pay strict attention to Kannada subject-verb agreement (e.g., ensure gender and number match perfectly, such as 'ಅವಳು' with a feminine verb ending, not a neuter one).
-3. TRANSLATION MATCH: Ensure the English translation accurately reflects the Kannada sentence.
+CRITICAL RULES:
+1. The Kannada sentence MUST contain the exact target word. Add it if it is missing.
+2. Only fix genuine errors (like subject-verb or gender agreement).
+3. Do not add any conversational filler.
 
-CRITICAL RESTRICTION: Do NOT output Wikitext. Do NOT output conversational filler.
-You MUST output exactly in this format:
-KANNADA: [Final Kannada sentence here]
-ENGLISH: [Final English translation here]
+Output ONLY in this exact format:
+KANNADA: [Corrected sentence containing the target word]
+ENGLISH: [English translation]
 """
 
 def get_few_shot_sentences(current_ground_truth, target_word, count=2):

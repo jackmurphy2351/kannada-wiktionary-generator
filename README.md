@@ -59,7 +59,7 @@ Run `streamlit run app.py` to draft a highly specific or missing word one at a t
 ### Prerequisites
 * Python 3.8+
 * A Wiktionary Bot Password for automated publishing.
-* (Optional) [Ollama](https://ollama.com/) installed and running locally with the `translategemma:27b` model pulled (`ollama pull translategemma:27b`) if you wish to use the AI generation feature.
+* (Optional) [Ollama](https://ollama.com/) installed and running locally with the `translategemma:4b` model pulled (`ollama pull translategemma:4b`) if you wish to use the AI generation feature.
 
 ### Installation
 1. **Clone the repository**:

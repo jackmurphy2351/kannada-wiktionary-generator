@@ -1,6 +1,5 @@
 import streamlit as st
 import time
-import ollama
 import re
 from dotenv import load_dotenv
 
@@ -8,14 +7,11 @@ from core.data_manager import load_ground_truth, save_to_ground_truth, format_ti
 from core.linguistics import get_dynamic_morphology_block, transliterate_kannada_to_iso
 from core.scraper import source_etymology
 from core.wiktionary_api import check_wiktionary_entry_exists, upload_to_wiktionary
-from core.llm_service import DRAFTER_PROMPT, LOGIC_AUDITOR_PROMPT, get_few_shot_sentences, parse_kannada_english
+from core.llm_service import DRAFTER_PROMPT, get_few_shot_sentences, parse_kannada_english, stream_chat
 
 load_dotenv()
 
 st.set_page_config(page_title="Kannada Wiktionary Gen", page_icon="🌿")
-
-DRAFTER_MODEL = 'translategemma:4b'
-LOGIC_MODEL = 'translategemma:4b'
 
 st.title("Kannada Wiktionary Generator")
 
@@ -96,43 +92,23 @@ if word:
                         final_kn = user_kn.strip()
                         final_en = user_en.strip()
                     else:
-                        st.info("🤖 No manual sentence provided. Generating via Ollama...")
+                        st.info("🤖 No manual sentence provided. Generating example sentence...")
                         examples_block = get_few_shot_sentences(ground_truth, word)
 
-                        with st.expander("📝 Step 1: Drafter (27B)", expanded=True):
+                        with st.expander("📝 Step 1: Drafter", expanded=True):
                             step1_placeholder = st.empty()
                             drafter_user_content = f"### Context Examples:\n{examples_block}\n\n### Target Word: {word}\nMeaning: {translation}\n"
                             draft_output = ""
                             try:
-                                for chunk in ollama.chat(model=DRAFTER_MODEL,
-                                                         messages=[{'role': 'system', 'content': DRAFTER_PROMPT},
-                                                                   {'role': 'user', 'content': drafter_user_content}],
-                                                         stream=True):
-                                    draft_output += chunk['message']['content']
+                                for chunk in stream_chat(DRAFTER_PROMPT, drafter_user_content):
+                                    draft_output += chunk
                                     step1_placeholder.markdown(draft_output)
                             except Exception as e:
-                                st.error(f"Ollama Connection Error: {e}.")
+                                st.error(f"LLM Generation Error: {e}")
                                 st.stop()
-                            kn_draft, en_draft = parse_kannada_english(draft_output)
+                            final_kn, final_en = parse_kannada_english(draft_output)
 
-                        with st.expander("🛡️ Step 2: Logic Auditor (27B)", expanded=True):
-                            step2_placeholder = st.empty()
-                            logic_user_content = f"Target Word: {word}\nRequired Meaning: {translation}\n\nDraft:\nKANNADA: {kn_draft}\nENGLISH: {en_draft}"
-                            logic_output = ""
-                            try:
-                                for chunk in ollama.chat(model=LOGIC_MODEL,
-                                                         messages=[{'role': 'system', 'content': LOGIC_AUDITOR_PROMPT},
-                                                                   {'role': 'user', 'content': logic_user_content}],
-                                                         stream=True):
-                                    logic_output += chunk['message']['content']
-                                    step2_placeholder.markdown(logic_output)
-                            except Exception as e:
-                                st.error(f"Ollama Connection Error: {e}.")
-                                st.stop()
-                            final_kn, final_en = parse_kannada_english(logic_output)
-                            if not final_kn: final_kn, final_en = kn_draft, en_draft
-
-                    with st.expander("🔤 Step 3: Transliteration Proofreader (Python Logic)", expanded=True):
+                    with st.expander("🔤 Step 2: Transliteration Proofreader (Python Logic)", expanded=True):
                         # Generate base transliteration
                         final_tr = transliterate_kannada_to_iso(final_kn)
 

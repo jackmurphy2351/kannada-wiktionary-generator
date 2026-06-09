@@ -17,7 +17,7 @@ By combining web scraping, deterministic linguistic rules, Unicode manipulation,
 3. Dual-Mode Workflows (Single & Bulk Processing)
 * **Single-Entry UI**: A streamlined interface for drafting a single word manually or bypassing the AI entirely.
 * **Bulk Processing Pipeline**: Automatically parses thousands of words from the Alar open-source dictionary, filters out words that already exist on Wiktionary, and generates an MVP (Minimum Viable Product) Wikitext block for rapid staging.
-* **Human-in-the-Loop Review**: A dedicated bulk-review UI to safely audit auto-generated entries, generate optional example sentences via Ollama, and publish them with a single click.
+* **Human-in-the-Loop Review**: A dedicated bulk-review UI to safely audit auto-generated entries, generate optional example sentences via the configured LLM backend (Sarvam API or local Ollama), and publish them with a single click.
 
 4. **Automatic Transliteration & Bolding**: A custom Python engine that deterministically maps Kannada text to the standard ISO 15919 transliteration format required by Wiktionary, while automatically applying correct Wikitext bolding syntax to target words.
 
@@ -59,7 +59,9 @@ Run `streamlit run app.py` to draft a highly specific or missing word one at a t
 ### Prerequisites
 * Python 3.8+
 * A Wiktionary Bot Password for automated publishing.
-* (Optional) [Ollama](https://ollama.com/) installed and running locally with the `translategemma:4b` model pulled (`ollama pull translategemma:4b`) if you wish to use the AI generation feature.
+* (Optional, for the AI example-generation feature) one of:
+  * A [Sarvam](https://www.sarvam.ai/) API key — the default backend (`LLM_BACKEND=sarvam`), or
+  * [Ollama](https://ollama.com/) running locally with an instruct model pulled, e.g. `ollama pull translategemma:27b` (`LLM_BACKEND=ollama`).
 
 ### Installation
 1. **Clone the repository**:
@@ -81,6 +83,12 @@ Create a `.env` file in the root directory to store your Wiktionary credentials 
 ```Plaintext
 WIKTIONARY_USERNAME="YourUsername@YourBotName"
 WIKTIONARY_PASSWORD="your_generated_bot_password"
+
+# LLM backend: "sarvam" (hosted, default) or "ollama" (local fallback)
+LLM_BACKEND="sarvam"
+SARVAM_API_KEY="your_sarvam_key"
+SARVAM_MODEL="sarvam-30b"
+OLLAMA_DRAFTER_MODEL="translategemma:27b"
 ```
 
 ## 💬 Feedback & Support

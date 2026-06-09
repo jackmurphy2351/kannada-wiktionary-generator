@@ -2,15 +2,13 @@ import streamlit as st
 import json
 import time
 import re
-import ollama
 from core.wiktionary_api import upload_to_wiktionary
-from core.llm_service import DRAFTER_PROMPT, parse_kannada_english
+from core.llm_service import DRAFTER_PROMPT, parse_kannada_english, stream_chat
 from core.linguistics import transliterate_kannada_to_iso
 from core.data_manager import save_to_ground_truth
 
 STAGING_FILE = 'data/staged_entries.json'
 DISCARDED_FILE = 'data/discarded_entries.json' # <-- NEW CONSTANT
-DRAFTER_MODEL = 'translategemma:4b'
 
 st.set_page_config(page_title="Batch Review Queue", page_icon="📝")
 st.title("Bulk Entry Review Queue")
@@ -83,14 +81,15 @@ st.caption(f"Intended meaning: {definition}")
 
 col1, col2 = st.columns(2)
 with col1:
-    if st.button("🤖 Generate Example with Ollama"):
+    if st.button("🤖 Generate Example"):
         with st.spinner("Drafting sentence..."):
             prompt = f"### Target Word: {selected_word}\nMeaning: {definition}\n"
-            response = ollama.chat(model=DRAFTER_MODEL, messages=[
-                {'role': 'system', 'content': DRAFTER_PROMPT},
-                {'role': 'user', 'content': prompt}
-            ])
-            kn_sent, en_sent = parse_kannada_english(response['message']['content'])
+            try:
+                draft_output = "".join(stream_chat(DRAFTER_PROMPT, prompt))
+            except Exception as e:
+                st.error(f"LLM Generation Error: {e}")
+                st.stop()
+            kn_sent, en_sent = parse_kannada_english(draft_output)
             tr_sent = transliterate_kannada_to_iso(kn_sent)
 
             # Apply bolding

@@ -156,6 +156,7 @@ if word:
                     if cognate_line:
                         formatted_etymology += f" {cognate_line}"
 
+                    morphology_section = f"\n{morphology_block}\n" if morphology_block.strip() else ""
                     final_wikitext = f"""==Kannada==
 
 ===Etymology===
@@ -168,9 +169,7 @@ if word:
 {pos_template}
 # {formatted_translation}
 #: {{{{ux|kn|{final_kn}|tr={final_tr}|t={final_en}}}}}
-
-{morphology_block}
-
+{morphology_section}
 ===References===
 * {{{{R:kn:Alar}}}}
 * {{{{R:kn:Kittel}}}}"""

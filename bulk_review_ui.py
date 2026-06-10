@@ -147,7 +147,7 @@ with c1:
         success, msg = upload_to_wiktionary(selected_word, edited_wikitext)
         if success:
             # 1. Save to your verified ground truth database
-            save_to_ground_truth(selected_word, edited_wikitext)
+            # save_to_ground_truth(selected_word, edited_wikitext)
 
             # 2. Remove from the staging queue completely
             staged_data.pop(selected_word)
@@ -155,7 +155,7 @@ with c1:
 
             # 3. Construct the URL and display it
             wiktionary_url = f"https://en.wiktionary.org/wiki/{selected_word}"
-            st.success(f"Published and saved to ground truth! [View '{selected_word}' on Wiktionary]({wiktionary_url})")
+            st.success(f"Published! [View '{selected_word}' on Wiktionary]({wiktionary_url})")
 
             # Pausing slightly longer to give you time to click the link
             time.sleep(3)
